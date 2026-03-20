@@ -1,19 +1,38 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useAppStore } from "../store/useAppStore";
 import { FORMAT_INFO } from "../lib/formats";
 import { formatFileSize } from "../lib/fileUtils";
+import { readFileThumbnail } from "../lib/tauri";
+
+const PREVIEWABLE = new Set(["image", "vector"]);
 
 export function FilePreview() {
   const file = useAppStore((s) => s.file);
   const reset = useAppStore((s) => s.reset);
   const state = useAppStore((s) => s.state);
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setThumbnail(null);
+      return;
+    }
+    const meta = FORMAT_INFO[file.format];
+    if (!meta || !PREVIEWABLE.has(meta.category) || file.format === "heic") {
+      setThumbnail(null);
+      return;
+    }
+    readFileThumbnail(file.path)
+      .then(setThumbnail)
+      .catch(() => setThumbnail(null));
+  }, [file]);
 
   if (!file) return null;
 
   const meta = FORMAT_INFO[file.format];
   const icon = meta?.icon ?? "📁";
   const label = meta?.label ?? file.extension.toUpperCase();
-
   const canDismiss = state === "loaded";
 
   return (
@@ -26,9 +45,17 @@ export function FilePreview() {
         border border-white/[0.06] light:border-black/[0.06]
       "
     >
-      {/* Icon */}
-      <div className="w-10 h-10 rounded-[var(--radius-button)] bg-white/[0.05] light:bg-black/[0.04] flex items-center justify-center text-lg shrink-0">
-        {icon}
+      {/* Thumbnail or icon */}
+      <div className="w-10 h-10 rounded-[var(--radius-button)] bg-white/[0.05] light:bg-black/[0.04] flex items-center justify-center text-lg shrink-0 overflow-hidden">
+        {thumbnail ? (
+          <img
+            src={thumbnail}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          icon
+        )}
       </div>
 
       {/* Info */}

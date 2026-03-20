@@ -4,7 +4,7 @@ pub mod error;
 pub mod formats;
 pub mod progress;
 
-use commands::{cancel_conversion, check_dependencies, convert, get_file_info, reveal_in_finder};
+use commands::{cancel_conversion, check_dependencies, convert, get_file_info, read_file_thumbnail, reveal_in_finder};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -33,6 +33,7 @@ pub fn run() {
             cancel_conversion,
             check_dependencies,
             get_file_info,
+            read_file_thumbnail,
             reveal_in_finder,
         ])
         .run(tauri::generate_context!())

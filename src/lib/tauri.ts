@@ -33,3 +33,8 @@ export async function getFileInfo(path: string): Promise<FileInfo> {
 export async function revealInFinder(path: string): Promise<void> {
   return invoke<void>("reveal_in_finder", { path });
 }
+
+/** Read a file as a base64 data URL for thumbnail display. */
+export async function readFileThumbnail(path: string): Promise<string> {
+  return invoke<string>("read_file_thumbnail", { path });
+}

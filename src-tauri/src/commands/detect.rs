@@ -98,6 +98,44 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Read a file and return its contents as a base64 data URL.
+/// Used for image thumbnails in the frontend.
+#[tauri::command]
+pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
+    use std::io::Read;
+
+    let p = PathBuf::from(&path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin").to_lowercase();
+
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "avif" => "image/avif",
+        "tiff" | "tif" => "image/tiff",
+        _ => return Err("Not a previewable format".into()),
+    };
+
+    let mut file = std::fs::File::open(&p).map_err(|e| format!("Cannot open file: {e}"))?;
+
+    // Cap at 10MB to avoid loading huge files into memory for a thumbnail.
+    let meta = file.metadata().map_err(|e| format!("Cannot read metadata: {e}"))?;
+    if meta.len() > 10 * 1024 * 1024 {
+        return Err("File too large for thumbnail".into());
+    }
+
+    let mut buf = Vec::with_capacity(meta.len() as usize);
+    file.read_to_end(&mut buf).map_err(|e| format!("Read error: {e}"))?;
+
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
