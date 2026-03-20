@@ -18,6 +18,7 @@ pub struct DependencyStatus {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfoResponse {
+    pub path: String,
     pub name: String,
     pub extension: String,
     pub size: u64,
@@ -78,6 +79,7 @@ pub async fn get_file_info(path: String) -> Result<FileInfoResponse, String> {
     let format = Format::from_extension(&extension);
 
     Ok(FileInfoResponse {
+        path,
         name,
         extension: extension.clone(),
         size: meta.len(),

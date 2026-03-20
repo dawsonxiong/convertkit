@@ -6,7 +6,6 @@ import { useFileDrop } from "./hooks/useFileDrop";
 import { useProgress } from "./hooks/useProgress";
 import { useConvert } from "./hooks/useConvert";
 import { getFileInfo, revealInFinder } from "./lib/tauri";
-import { TitleBar } from "./components/TitleBar";
 import { DropZone } from "./components/DropZone";
 import { FilePreview } from "./components/FilePreview";
 import { FormatPicker } from "./components/FormatPicker";
@@ -82,8 +81,7 @@ export default function App() {
   if (!ready) {
     return (
       <div className="flex flex-col h-screen w-screen select-none bg-surface light:bg-surface-light">
-        <TitleBar />
-        <main className="flex-1 flex flex-col items-center justify-center px-6 pb-8">
+          <main className="flex-1 flex flex-col items-center justify-center px-6 pb-8">
           <OnboardingCheck onReady={() => setReady(true)} />
         </main>
       </div>
@@ -92,7 +90,6 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen select-none bg-surface light:bg-surface-light">
-      <TitleBar />
 
       <main className="flex-1 flex flex-col items-center justify-center px-6 pb-8">
         <AnimatePresence mode="wait">
