@@ -157,7 +157,11 @@ impl Format {
                 targets
             }
             FileCategory::Video => {
-                let mut targets = vec![Self::Mp4, Self::Mov, Self::WebM, Self::Mkv, Self::Avi];
+                let mut targets = vec![
+                    Self::Mp4, Self::Mov, Self::WebM, Self::Mkv, Self::Avi,
+                    Self::Gif, // video -> GIF via FFmpeg
+                    Self::Mp3, Self::Wav, Self::Aac, Self::Flac, Self::Ogg, Self::M4a, // audio extraction
+                ];
                 targets.retain(|f| f != self);
                 targets
             }

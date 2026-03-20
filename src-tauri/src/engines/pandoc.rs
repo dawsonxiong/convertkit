@@ -1,13 +1,13 @@
-use tauri::AppHandle;
+use std::path::Path;
+
+use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
 use crate::engines::{ConversionEngine, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
+use crate::progress::ProgressPayload;
 
-/// Engine that shells out to Pandoc for document conversions.
-///
-/// **Phase 1 stub** -- returns `UnsupportedConversion` from `convert()`.
 pub struct PandocEngine;
 
 impl ConversionEngine for PandocEngine {
@@ -19,20 +19,98 @@ impl ConversionEngine for PandocEngine {
         input.category() == FileCategory::Document
             && output.category() == FileCategory::Document
             && input != output
+            // LibreOffice handles DOCX→PDF better; only fall through to Pandoc
+            // for other document pairs.
+            && !(input == Format::Docx && output == Format::Pdf)
     }
 
     async fn convert(
         &self,
         request: ConversionRequest,
-        _app: AppHandle,
-        _cancel_token: CancellationToken,
+        app: AppHandle,
+        cancel_token: CancellationToken,
     ) -> Result<ConversionResult, ConversionError> {
-        Err(ConversionError::UnsupportedConversion {
-            input: format!(
-                "Pandoc engine not yet implemented ({})",
-                request.input_format.label()
-            ),
-            output: request.output_format.label().to_string(),
+        let input = &request.input_path;
+        let output = &request.output_path;
+
+        let _ = app.emit("conversion-progress", ProgressPayload {
+            percent: -1,
+            stage: "Converting document…".into(),
+        });
+
+        let mut args: Vec<String> = vec![input.to_string_lossy().into()];
+
+        // Output format hint for Pandoc.
+        if request.output_format == Format::Md {
+            args.extend(["-t".into(), "gfm".into()]);
+        }
+
+        // PDF needs a LaTeX engine.
+        if request.output_format == Format::Pdf {
+            args.extend(["--pdf-engine".into(), "tectonic".into()]);
+        }
+
+        args.extend(["-o".into(), output.to_string_lossy().into()]);
+
+        let mut child = tokio::process::Command::new("pandoc")
+            .args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| ConversionError::ProcessFailed {
+                message: format!("Failed to spawn pandoc: {e}"),
+                stderr: String::new(),
+                exit_code: None,
+            })?;
+
+        let status = tokio::select! {
+            result = child.wait() => {
+                result.map_err(|e| ConversionError::ProcessFailed {
+                    message: format!("pandoc error: {e}"),
+                    stderr: String::new(),
+                    exit_code: None,
+                })?
+            }
+            _ = cancel_token.cancelled() => {
+                let _ = child.kill().await;
+                cleanup_partial(output);
+                return Err(ConversionError::Cancelled);
+            }
+        };
+
+        if !status.success() {
+            let stderr = read_stderr(&mut child).await;
+            cleanup_partial(output);
+            return Err(ConversionError::ProcessFailed {
+                message: "Pandoc conversion failed".into(),
+                stderr,
+                exit_code: status.code(),
+            });
+        }
+
+        let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
+        Ok(ConversionResult {
+            output_path: output.to_string_lossy().into(),
+            output_size: meta.len(),
+            duration_ms: 0,
         })
+    }
+}
+
+async fn read_stderr(child: &mut tokio::process::Child) -> String {
+    match child.stderr.take() {
+        Some(mut s) => {
+            use tokio::io::AsyncReadExt;
+            let mut buf = String::new();
+            let _ = s.read_to_string(&mut buf).await;
+            buf
+        }
+        None => String::new(),
+    }
+}
+
+fn cleanup_partial(path: &Path) {
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
     }
 }
