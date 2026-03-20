@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #191919;
+  --color-surface-light: #fafafa;
+  --color-surface-elevated: #232323;
+  --color-surface-elevated-light: #ffffff;
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --font-sans: "Inter Variable", "SF Pro", system-ui, sans-serif;
+  --radius-card: 12px;
+  --radius-button: 8px;
+  --radius-pill: 6px;
+}
+
+/* ── Base ─────────────────────────────────────────────────── */
+
+body {
+  overflow: hidden;
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: #e5e5e5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background-color: var(--color-surface-light);
+    color: #1a1a1a;
+  }
+}
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Drag region cursor ───────────────────────────────────── */
+
+[data-tauri-drag-region] {
+  cursor: default;
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input {
+  -webkit-app-region: no-drag;
+}
+
+/* ── Transitions ──────────────────────────────────────────── */
+
+button,
+a,
+input,
+[role="button"] {
+  transition: all 200ms ease;
+}
+
+/* ── Progress bar indeterminate ───────────────────────────── */
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.animate-indeterminate {
+  animation: indeterminate 1.4s ease-in-out infinite;
+}
+
+/* ── Focus ────────────────────────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}
+
+/* ── Selection ────────────────────────────────────────────── */
+
+::selection {
+  background-color: var(--color-accent);
+  color: white;
+}
