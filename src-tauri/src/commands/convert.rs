@@ -19,9 +19,10 @@ pub async fn convert(
     app: AppHandle,
     input_path: String,
     output_format: String,
+    job_id: Option<String>,
 ) -> Result<ConversionResult, ConversionError> {
     let started = Instant::now();
-    let job_id = Uuid::new_v4().to_string();
+    let job_id = job_id.unwrap_or_else(|| Uuid::new_v4().to_string());
 
     // --- Parse formats ---
     let input = PathBuf::from(&input_path);

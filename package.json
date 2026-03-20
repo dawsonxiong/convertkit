@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsgo && vite build",
-    "check": "tsgo",
+    "build": "tsgo -config tsconfig.json && vite build",
+    "check": "tsgo -config tsconfig.json",
     "lint": "oxlint -c .oxlintrc.json src/",
     "format": "oxfmt -c .oxfmtrc.json --write src/",
     "preview": "vite preview",
