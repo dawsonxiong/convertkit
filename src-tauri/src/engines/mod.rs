@@ -5,7 +5,7 @@ pub mod pandoc;
 pub mod resvg;
 pub mod vtracer;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::AppHandle;
@@ -157,4 +157,12 @@ pub fn get_engine(input: Format, output: Format) -> Option<EngineKind> {
 #[allow(dead_code)]
 pub(crate) fn both_images(a: Format, b: Format) -> bool {
     a.category() == FileCategory::Image && b.category() == FileCategory::Image
+}
+
+/// Remove a partially-written output file, if it exists.
+/// Shared by all engines to avoid duplication.
+pub fn cleanup_partial(path: &Path) {
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
 }

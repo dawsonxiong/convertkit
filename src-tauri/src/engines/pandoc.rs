@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -73,14 +71,14 @@ impl ConversionEngine for PandocEngine {
             }
             _ = cancel_token.cancelled() => {
                 let _ = child.kill().await;
-                cleanup_partial(output);
+                super::cleanup_partial(output);
                 return Err(ConversionError::Cancelled);
             }
         };
 
         if !status.success() {
             let stderr = read_stderr(&mut child).await;
-            cleanup_partial(output);
+            super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "Pandoc conversion failed".into(),
                 stderr,
@@ -109,8 +107,3 @@ async fn read_stderr(child: &mut tokio::process::Child) -> String {
     }
 }
 
-fn cleanup_partial(path: &Path) {
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
-    }
-}

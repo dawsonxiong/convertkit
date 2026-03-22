@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -62,16 +60,25 @@ impl ConversionEngine for ResvgEngine {
             }
             _ = cancel_token.cancelled() => {
                 let _ = child.kill().await;
-                cleanup_partial(output);
+                super::cleanup_partial(output);
                 return Err(ConversionError::Cancelled);
             }
         };
 
         if !status.success() {
-            cleanup_partial(output);
+            let stderr = match child.stderr {
+                Some(ref mut s) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut buf = String::new();
+                    let _ = s.read_to_string(&mut buf).await;
+                    buf
+                }
+                None => String::new(),
+            };
+            super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "resvg rendering failed".into(),
-                stderr: String::new(),
+                stderr,
                 exit_code: status.code(),
             });
         }
@@ -85,8 +92,3 @@ impl ConversionEngine for ResvgEngine {
     }
 }
 
-fn cleanup_partial(path: &Path) {
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
-    }
-}

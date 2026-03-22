@@ -22,9 +22,12 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 const INSTALL_HINTS: Record<string, string> = {
   ffmpeg: "brew install ffmpeg",
+  magick: "brew install imagemagick",
   pandoc: "brew install pandoc",
-  libreoffice: "brew install --cask libreoffice",
-  inkscape: "brew install --cask inkscape",
+  soffice: "brew install --cask libreoffice",
+  resvg: "cargo install resvg",
+  vtracer: "cargo install vtracer",
+  tectonic: "brew install tectonic",
 };
 
 export function StatusMessage({ variant }: StatusMessageProps) {
@@ -112,9 +115,22 @@ export function StatusMessage({ variant }: StatusMessageProps) {
   if (variant === "error") {
     const kind = error?.kind ?? "ProcessFailed";
     const message = ERROR_MESSAGES[kind] ?? "Something went wrong.";
-    const detail = error?.detail?.message ?? error?.detail?.dependency ?? "";
-    const depName = error?.detail?.dependency;
-    const installHint = depName ? INSTALL_HINTS[depName] : null;
+    const toolName = error?.detail?.tool;
+    const installHint = toolName ? (INSTALL_HINTS[toolName] ?? error?.detail?.install_hint ?? null) : null;
+
+    let detail = "";
+    if (kind === "MissingDependency") {
+      detail = error?.detail?.install_hint ?? "";
+    } else if (kind === "ProcessFailed") {
+      detail = error?.detail?.message ?? "";
+      const stderr = error?.detail?.stderr;
+      if (stderr) {
+        const truncated = stderr.length > 200 ? stderr.slice(0, 200) + "..." : stderr;
+        detail = detail ? `${detail}\n${truncated}` : truncated;
+      }
+    } else {
+      detail = error?.detail?.message ?? "";
+    }
 
     return (
       <motion.div
@@ -138,7 +154,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
 
         <div className="flex flex-col items-center gap-1 text-center">
           <p className="text-sm font-medium text-white/90 light:text-black/90">{message}</p>
-          {detail && <p className="text-xs text-white/40 light:text-black/40 max-w-xs">{detail}</p>}
+          {detail && <p className="text-xs text-white/40 light:text-black/40 max-w-xs whitespace-pre-wrap break-words">{detail}</p>}
         </div>
 
         {/* Install hint for missing dependencies */}

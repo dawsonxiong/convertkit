@@ -81,12 +81,30 @@ impl ConversionEngine for LibreOfficeEngine {
         }
 
         // LibreOffice writes to outdir with the same stem but new extension.
-        // If our desired output path differs, rename.
-        let lo_output = out_dir.join(format!(
-            "{}.{}",
-            input.file_stem().unwrap_or_default().to_string_lossy(),
-            convert_to,
-        ));
+        // However, the naming can be unpredictable (e.g. spaces replaced, etc.),
+        // so search for any file matching {stem}.{convert_to} in the output dir.
+        let stem = input.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let expected_ext = format!(".{}", convert_to);
+
+        let lo_output = std::fs::read_dir(out_dir)
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .find(|p| {
+                        let fname = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                        let ext_matches = p
+                            .extension()
+                            .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+                            == Some(expected_ext.clone());
+                        ext_matches && fname.starts_with(&stem)
+                    })
+            })
+            .unwrap_or_else(|| {
+                // Fall back to the original predictable name.
+                out_dir.join(format!("{}.{}", stem, convert_to))
+            });
 
         if lo_output != *output && lo_output.exists() {
             std::fs::rename(&lo_output, output).map_err(|_| ConversionError::OutputMissing)?;

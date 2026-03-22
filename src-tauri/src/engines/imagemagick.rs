@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -47,6 +45,7 @@ impl ConversionEngine for ImageMagickEngine {
         let mut args: Vec<String> = vec![
             "convert".to_string(),
             input.to_string_lossy().to_string(),
+            "-strip".to_string(),
         ];
 
         // Format-specific quality / size flags.
@@ -65,7 +64,7 @@ impl ConversionEngine for ImageMagickEngine {
             }
             Format::Ico => {
                 args.push("-resize".to_string());
-                args.push("256x256".to_string());
+                args.push("256x256>".to_string());
             }
             _ => {}
         }
@@ -96,7 +95,7 @@ impl ConversionEngine for ImageMagickEngine {
             _ = cancel_token.cancelled() => {
                 // Kill the child and clean up partial output.
                 let _ = child.kill().await;
-                cleanup_partial(output);
+                super::cleanup_partial(output);
                 return Err(ConversionError::Cancelled);
             }
         };
@@ -112,7 +111,7 @@ impl ConversionEngine for ImageMagickEngine {
                 }
                 None => String::new(),
             };
-            cleanup_partial(output);
+            super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "ImageMagick conversion failed".to_string(),
                 stderr,
@@ -131,9 +130,3 @@ impl ConversionEngine for ImageMagickEngine {
     }
 }
 
-/// Remove a partially-written output file, if it exists.
-fn cleanup_partial(path: &Path) {
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
-    }
-}

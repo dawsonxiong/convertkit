@@ -125,7 +125,7 @@ impl ConversionEngine for FfmpegEngine {
             }
             _ = cancel_token.cancelled() => {
                 let _ = child.kill().await;
-                cleanup_partial(output);
+                super::cleanup_partial(output);
                 return Err(ConversionError::Cancelled);
             }
         };
@@ -134,7 +134,7 @@ impl ConversionEngine for FfmpegEngine {
 
         if !status.success() {
             let stderr = read_stderr(&mut child).await;
-            cleanup_partial(output);
+            super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "FFmpeg conversion failed".into(),
                 stderr,
@@ -213,7 +213,7 @@ async fn convert_to_gif(
     ).await?;
 
     if !status.success() {
-        cleanup_partial(output);
+        super::cleanup_partial(output);
         return Err(ConversionError::ProcessFailed {
             message: "GIF encoding failed".into(),
             stderr: String::new(),
@@ -274,6 +274,10 @@ async fn can_copy_streams(path: &Path, target: Format) -> bool {
         Format::Mp4 => {
             codecs.iter().any(|c| ["h264", "hevc", "av1"].contains(c))
                 && codecs.iter().any(|c| ["aac", "mp3"].contains(c))
+        }
+        Format::Mov => {
+            codecs.iter().any(|c| ["h264", "hevc"].contains(c))
+                && codecs.iter().any(|c| *c == "aac")
         }
         Format::Mkv => true, // MKV accepts almost anything
         _ => false,
@@ -393,8 +397,3 @@ async fn read_stderr(child: &mut tokio::process::Child) -> String {
     }
 }
 
-fn cleanup_partial(path: &Path) {
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
-    }
-}

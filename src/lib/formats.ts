@@ -82,15 +82,15 @@ export const COMPATIBLE_TARGETS: Record<string, string[]> = {
   m4a: without(AUDIO_FORMATS, "m4a"),
 
   // Document -> pandoc / libreoffice matrix
-  pdf: ["docx", "html", "txt", "epub"],
+  pdf: ["docx"],
   docx: ["pdf", "html", "md", "txt", "epub"],
   html: ["pdf", "docx", "md", "txt", "epub"],
   md: ["pdf", "docx", "html", "txt", "epub"],
   epub: ["pdf", "docx", "html", "md", "txt"],
-  txt: ["pdf", "docx", "html", "md", "epub"],
+  txt: ["docx", "html", "md", "epub"],
 
-  // SVG -> raster images
-  svg: IMAGE_FORMATS,
+  // SVG -> raster (resvg only supports SVG->PNG)
+  svg: ["png"],
 };
 
 /** Returns the list of compatible output format keys for a given input format. */

@@ -1,3 +1,4 @@
+use log::warn;
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -22,8 +23,8 @@ pub struct FileInfoResponse {
     pub name: String,
     pub extension: String,
     pub size: u64,
-    pub format: Option<String>,
-    pub category: Option<String>,
+    pub format: String,
+    pub category: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -78,13 +79,32 @@ pub async fn get_file_info(path: String) -> Result<FileInfoResponse, String> {
 
     let format = Format::from_extension(&extension);
 
+    // Magic-byte check: if infer detects a type that conflicts with the
+    // extension, log a warning but proceed anyway.
+    if let Ok(Some(inferred)) = infer::get_from_path(&p) {
+        let inferred_ext = inferred.extension();
+        if !extension.is_empty() && inferred_ext != extension.to_lowercase() {
+            // Check if they map to different formats (aliases like jpg/jpeg are fine).
+            let ext_format = Format::from_extension(&extension);
+            let inferred_format = Format::from_extension(inferred_ext);
+            if ext_format != inferred_format {
+                warn!(
+                    "File extension '.{}' does not match detected type '{}' ({})",
+                    extension,
+                    inferred_ext,
+                    inferred.mime_type()
+                );
+            }
+        }
+    }
+
     Ok(FileInfoResponse {
         path,
         name,
         extension: extension.clone(),
         size: meta.len(),
-        format: format.map(|f| f.extension().to_string()),
-        category: format.map(|f| f.category().to_string()),
+        format: format.map(|f| f.extension().to_string()).unwrap_or_else(|| "unknown".to_string()),
+        category: format.map(|f| f.category().to_string()).unwrap_or_else(|| "unknown".to_string()),
     })
 }
 
@@ -100,12 +120,11 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Read a file and return its contents as a base64 data URL.
-/// Used for image thumbnails in the frontend.
+/// Read a file and return its contents as a base64 data URL (thumbnail).
+/// Uses ImageMagick to resize to 200x200 for raster images; falls back to
+/// reading the full file for SVGs.
 #[tauri::command]
 pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
-    use std::io::Read;
-
     let p = PathBuf::from(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin").to_lowercase();
 
@@ -122,17 +141,55 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
         _ => return Err("Not a previewable format".into()),
     };
 
-    let mut file = std::fs::File::open(&p).map_err(|e| format!("Cannot open file: {e}"))?;
+    // For SVGs, read the full file (magick may not handle them well).
+    if ext == "svg" {
+        use std::io::Read;
+        let mut file = std::fs::File::open(&p).map_err(|e| format!("Cannot open file: {e}"))?;
+        let meta = file.metadata().map_err(|e| format!("Cannot read metadata: {e}"))?;
+        if meta.len() > 10 * 1024 * 1024 {
+            return Err("File too large for thumbnail".into());
+        }
+        let mut buf = Vec::with_capacity(meta.len() as usize);
+        file.read_to_end(&mut buf).map_err(|e| format!("Read error: {e}"))?;
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+        return Ok(format!("data:{};base64,{}", mime, b64));
+    }
 
-    // Cap at 10MB to avoid loading huge files into memory for a thumbnail.
+    // For raster images, shell out to magick to get a 200x200 PNG thumbnail.
+    let output = tokio::process::Command::new("magick")
+        .arg(&p)
+        .args(["-resize", "200x200", "-quality", "80", "png:-"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run magick for thumbnail: {e}"))?;
+
+    if !output.status.success() {
+        // Fall back to reading the full file.
+        return read_file_thumbnail_fallback(&p, mime).await;
+    }
+
+    let bytes = output.stdout;
+    if bytes.is_empty() {
+        return read_file_thumbnail_fallback(&p, mime).await;
+    }
+
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    // Thumbnail is always PNG from magick.
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+/// Fallback: read the whole file when magick thumbnail generation fails.
+async fn read_file_thumbnail_fallback(p: &PathBuf, mime: &str) -> Result<String, String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(p).map_err(|e| format!("Cannot open file: {e}"))?;
     let meta = file.metadata().map_err(|e| format!("Cannot read metadata: {e}"))?;
     if meta.len() > 10 * 1024 * 1024 {
         return Err("File too large for thumbnail".into());
     }
-
     let mut buf = Vec::with_capacity(meta.len() as usize);
     file.read_to_end(&mut buf).map_err(|e| format!("Read error: {e}"))?;
-
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
     Ok(format!("data:{};base64,{}", mime, b64))
