@@ -102,7 +102,7 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen select-none bg-surface light:bg-surface-light">
 
       <main className="flex-1 flex flex-col items-center justify-center px-6 pb-8">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           {state === "empty" && (
             <motion.div key="empty" {...fade} className="w-full max-w-md flex flex-col gap-3">
               <DropZone isDragging={isDragging} />

@@ -37,7 +37,6 @@ export function FilePreview() {
 
   return (
     <motion.div
-      layout
       className="
         relative flex items-center gap-3 p-3
         bg-surface-elevated light:bg-surface-elevated-light
