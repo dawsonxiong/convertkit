@@ -26,3 +26,4 @@ tempfile = "3"
 log = "0.4"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
+tauri-plugin-drag = "2"

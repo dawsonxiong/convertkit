@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { motion } from "framer-motion";
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { useAppStore } from "../store/useAppStore";
 import { revealInFinder } from "../lib/tauri";
 import { useConvert } from "../hooks/useConvert";
@@ -43,14 +44,33 @@ export function StatusMessage({ variant }: StatusMessageProps) {
     }
   }, [result]);
 
+  const handleDrag = useCallback((e: React.MouseEvent) => {
+    if (!result?.output_path) return;
+    e.preventDefault();
+    startDrag({ item: [result.output_path], icon: "" });
+  }, [result]);
+
   const handleCopyHint = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
   }, []);
 
   if (variant === "success" && result) {
     const outputName = result.output_path.split("/").pop() ?? "File";
-    const savedSize = formatFileSize(result.output_size);
+    const outputSize = formatFileSize(result.output_size);
     const duration = (result.duration_ms / 1000).toFixed(1);
+
+    const inputSize = file?.size ?? 0;
+    let sizeComparison = outputSize;
+    if (inputSize > 0) {
+      const ratio = ((1 - result.output_size / inputSize) * 100);
+      if (ratio > 1) {
+        sizeComparison = `${formatFileSize(inputSize)} → ${outputSize} (${Math.round(ratio)}% smaller)`;
+      } else if (ratio < -1) {
+        sizeComparison = `${formatFileSize(inputSize)} → ${outputSize} (${Math.round(Math.abs(ratio))}% larger)`;
+      } else {
+        sizeComparison = `${formatFileSize(inputSize)} → ${outputSize}`;
+      }
+    }
 
     return (
       <motion.div
@@ -77,8 +97,29 @@ export function StatusMessage({ variant }: StatusMessageProps) {
             Conversion complete
           </p>
           <p className="text-xs text-white/40 light:text-black/40 max-w-xs truncate">
-            {outputName} &middot; {savedSize} &middot; {duration}s
+            {outputName} &middot; {duration}s
           </p>
+          <p className="text-xs text-white/30 light:text-black/30">
+            {sizeComparison}
+          </p>
+        </div>
+
+        {/* Drag target */}
+        <div
+          onMouseDown={handleDrag}
+          className="
+            w-full flex items-center justify-center gap-2 py-2.5 px-4
+            rounded-[var(--radius-card)] cursor-grab
+            border border-dashed border-white/[0.06] light:border-black/[0.06]
+            hover:border-white/[0.12] light:hover:border-black/[0.12]
+            hover:bg-white/[0.03] light:hover:bg-black/[0.02]
+            transition-all duration-200
+          "
+        >
+          <svg className="w-3.5 h-3.5 text-white/25 light:text-black/25" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          <span className="text-xs text-white/30 light:text-black/30">Drag file to use</span>
         </div>
 
         {/* Actions */}
