@@ -10,8 +10,11 @@ interface AppStore {
   result: ConversionResult | null;
   error: ConversionError | null;
   jobId: string | null;
+  rejectionMessage: string | null;
 
   setFile: (file: FileInfo) => void;
+  setRejection: (message: string) => void;
+  clearRejection: () => void;
   setOutputFormat: (format: string) => void;
   startConversion: (jobId: string) => void;
   updateProgress: (percent: number, stage: string) => void;
@@ -29,6 +32,7 @@ const initialState = {
   result: null,
   error: null,
   jobId: null,
+  rejectionMessage: null,
 };
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -75,6 +79,9 @@ export const useAppStore = create<AppStore>((set) => ({
       progressStage: "",
       error,
     }),
+
+  setRejection: (message) => set({ rejectionMessage: message }),
+  clearRejection: () => set({ rejectionMessage: null }),
 
   reset: () => set({ ...initialState }),
 }));

@@ -93,6 +93,15 @@ export const COMPATIBLE_TARGETS: Record<string, string[]> = {
   svg: ["png"],
 };
 
+/** Set of all supported file extensions (lowercase, no dot). */
+export const SUPPORTED_EXTENSIONS = new Set(Object.keys(FORMAT_INFO));
+
+/** Check whether a file path has a supported extension. */
+export function isSupportedFile(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return SUPPORTED_EXTENSIONS.has(ext);
+}
+
 /** Returns the list of compatible output format keys for a given input format. */
 export function getCompatibleFormats(inputFormat: string): string[] {
   return COMPATIBLE_TARGETS[inputFormat.toLowerCase()] ?? [];

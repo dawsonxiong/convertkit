@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getFileInfo } from "../lib/tauri";
 import { useAppStore } from "../store/useAppStore";
+import { isSupportedFile } from "../lib/formats";
 
 interface DropZoneProps {
   isDragging: boolean;
@@ -10,6 +11,7 @@ interface DropZoneProps {
 
 export function DropZone({ isDragging }: DropZoneProps) {
   const setFile = useAppStore((s) => s.setFile);
+  const setRejection = useAppStore((s) => s.setRejection);
 
   const handleClick = useCallback(async () => {
     const selected = await open({
@@ -18,6 +20,11 @@ export function DropZone({ isDragging }: DropZoneProps) {
     });
 
     if (selected) {
+      if (!isSupportedFile(selected)) {
+        const ext = selected.split(".").pop()?.toLowerCase() ?? "unknown";
+        setRejection(`".${ext}" files are not supported`);
+        return;
+      }
       try {
         const info = await getFileInfo(selected);
         setFile(info);
@@ -25,7 +32,7 @@ export function DropZone({ isDragging }: DropZoneProps) {
         console.error("Failed to get file info:", err);
       }
     }
-  }, [setFile]);
+  }, [setFile, setRejection]);
 
   return (
     <motion.button

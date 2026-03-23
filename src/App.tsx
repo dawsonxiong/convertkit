@@ -27,10 +27,19 @@ export default function App() {
   const result = useAppStore((s) => s.result);
   const setFile = useAppStore((s) => s.setFile);
   const reset = useAppStore((s) => s.reset);
+  const rejectionMessage = useAppStore((s) => s.rejectionMessage);
+  const clearRejection = useAppStore((s) => s.clearRejection);
   const { isDragging } = useFileDrop();
   const { convert, cancel } = useConvert();
 
   useProgress();
+
+  // Auto-clear rejection message after 3 seconds
+  useEffect(() => {
+    if (!rejectionMessage) return;
+    const timer = setTimeout(clearRejection, 3000);
+    return () => clearTimeout(timer);
+  }, [rejectionMessage, clearRejection]);
 
   const openFileBrowser = useCallback(async () => {
     const selected = await open({ multiple: false, title: "Choose a file to convert" });
@@ -94,8 +103,20 @@ export default function App() {
       <main className="flex-1 flex flex-col items-center justify-center px-6 pb-8">
         <AnimatePresence mode="wait">
           {state === "empty" && (
-            <motion.div key="empty" {...fade} className="w-full max-w-md">
+            <motion.div key="empty" {...fade} className="w-full max-w-md flex flex-col gap-3">
               <DropZone isDragging={isDragging} />
+              <AnimatePresence>
+                {rejectionMessage && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="text-xs text-error text-center"
+                  >
+                    {rejectionMessage}
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
 
