@@ -22,15 +22,14 @@ export function useConvert() {
       const result = await convert(file.path, outputFormat, id);
       setResult(result);
     } catch (err: unknown) {
-      const convErr = err as ConversionError;
-      setError(
-        convErr?.kind
-          ? convErr
-          : {
-              kind: "ProcessFailed",
-              detail: { message: String(err) },
-            },
-      );
+      if (typeof err === "object" && err !== null && "kind" in err) {
+        setError(err as ConversionError);
+      } else {
+        setError({
+          kind: "ProcessFailed",
+          detail: { message: String(err) },
+        });
+      }
     }
   }, [file, outputFormat, startConversion, setResult, setError]);
 

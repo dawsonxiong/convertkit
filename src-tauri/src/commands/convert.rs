@@ -46,7 +46,7 @@ pub async fn convert(
         return Err(ConversionError::InputNotFound { path: input_path });
     }
 
-    // --- Bug 8: File validation ---
+    // File validation
     let input_meta = std::fs::metadata(&input)
         .map_err(|e| ConversionError::InputNotFound { path: format!("{}: {}", input_path, e) })?;
 
@@ -64,7 +64,7 @@ pub async fn convert(
         });
     }
 
-    // --- Bug 20: Files with no extension ---
+    // Files with no extension
     let input_ext = input
         .extension()
         .and_then(|e| e.to_str())
@@ -77,7 +77,7 @@ pub async fn convert(
         });
     }
 
-    // --- Bug 8: Magic-byte check via infer ---
+    // Magic-byte check via infer
     if let Ok(Some(inferred)) = infer::get_from_path(&input) {
         let inferred_ext = inferred.extension();
         let ext_format = Format::from_extension(input_ext);
@@ -127,7 +127,7 @@ pub async fn convert(
     // --- Build output path (dedup) ---
     let mut output_path = dedup_output_path(&input, out_format);
 
-    // --- Bug 12: Output directory writability check ---
+    // Output directory writability check
     if let Some(out_dir) = output_path.parent() {
         let probe = out_dir.join(".convertkit_write_test");
         match std::fs::File::create(&probe) {
@@ -147,7 +147,7 @@ pub async fn convert(
         }
     }
 
-    // --- Bug 6: Prevent double-submit ---
+    // Prevent double-submit
     let cancel_token = tokio_util::sync::CancellationToken::new();
     {
         let state = app.state::<ActiveJobs>();
@@ -161,7 +161,7 @@ pub async fn convert(
         jobs.insert(job_id.clone(), cancel_token.clone());
     }
 
-    // Bug 6: Guard ensures the job is removed even on panic.
+    // Guard ensures the job is removed even on panic.
     let _guard = JobGuard {
         app: app.clone(),
         job_id: job_id.clone(),
@@ -183,7 +183,7 @@ pub async fn convert(
         output_format: out_format,
     };
 
-    // --- Bug 5: Timeout ---
+    // Timeout
     let timeout_duration = if out_format.category() == FileCategory::Video {
         Duration::from_secs(5 * 60) // 5 minutes for video
     } else {

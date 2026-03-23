@@ -68,6 +68,7 @@ impl ConversionEngine for LibreOfficeEngine {
             }
             _ = cancel_token.cancelled() => {
                 let _ = child.kill().await;
+                super::cleanup_partial(output);
                 return Err(ConversionError::Cancelled);
             }
         };
