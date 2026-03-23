@@ -22,7 +22,7 @@ export function FormatPicker() {
 
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-xs font-medium text-white/30 light:text-black/30 uppercase tracking-wider">
+      <span className="text-[13px] font-medium text-white/30 light:text-black/30">
         Convert to
       </span>
 
@@ -34,7 +34,7 @@ export function FormatPicker() {
             </span>
           )}
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {group.formats.map((fmt) => {
               const meta = FORMAT_INFO[fmt];
               if (!meta) return null;
@@ -49,12 +49,12 @@ export function FormatPicker() {
                   whileTap={{ scale: 0.96 }}
                   onClick={() => setOutputFormat(fmt)}
                   className={`
-                    px-2.5 py-1 text-xs font-medium rounded-[var(--radius-pill)]
+                    px-3 py-1.5 text-xs font-medium rounded-[var(--radius-pill)]
                     border transition-all duration-200
                     ${
                       isSelected
                         ? "bg-accent text-white border-accent"
-                        : "bg-white/[0.04] light:bg-black/[0.03] text-white/50 light:text-black/50 border-white/[0.06] light:border-black/[0.06] hover:border-white/[0.14] light:hover:border-black/[0.14] hover:text-white/70 light:hover:text-black/70"
+                        : "bg-white/[0.04] light:bg-black/[0.03] text-white/50 light:text-black/50 border-white/[0.05] light:border-black/[0.05] hover:border-white/[0.10] light:hover:border-black/[0.10] hover:text-white/70 light:hover:text-black/70"
                     }
                   `}
                 >

@@ -11,7 +11,7 @@ export function ProgressBar() {
   return (
     <div className="flex flex-col gap-2">
       {/* Track */}
-      <div className="relative h-1.5 w-full rounded-full bg-white/[0.06] light:bg-black/[0.06] overflow-hidden">
+      <div className="relative h-2 w-full rounded-full bg-white/[0.06] light:bg-black/[0.06] overflow-hidden">
         {isIndeterminate ? (
           <div className="absolute inset-0">
             <div className="h-full w-1/4 rounded-full bg-accent animate-indeterminate" />

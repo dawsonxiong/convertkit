@@ -17,7 +17,7 @@ export function TitleBar() {
         border-b border-white/[0.06] light:border-black/[0.06]
       "
     >
-      <span className="text-[11px] font-medium tracking-wide text-white/30 light:text-black/30 pointer-events-none">
+      <span className="text-[11px] tracking-wide text-white/20 light:text-black/20 pointer-events-none">
         ConvertKit
       </span>
     </header>

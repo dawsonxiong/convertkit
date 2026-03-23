@@ -100,7 +100,7 @@ export default function App() {
           )}
 
           {state === "loaded" && (
-            <motion.div key="loaded" {...fade} className="w-full max-w-md flex flex-col gap-5">
+            <motion.div key="loaded" {...fade} className="w-full max-w-md flex flex-col gap-6">
               <FilePreview />
               <FormatPicker />
               <ConvertButton onClick={convert} mode="convert" />
@@ -108,7 +108,7 @@ export default function App() {
           )}
 
           {state === "converting" && (
-            <motion.div key="converting" {...fade} className="w-full max-w-md flex flex-col gap-5">
+            <motion.div key="converting" {...fade} className="w-full max-w-md flex flex-col gap-6">
               <FilePreview />
               <ProgressBar />
               <ConvertButton onClick={cancel} mode="cancel" />
@@ -116,13 +116,13 @@ export default function App() {
           )}
 
           {state === "done" && (
-            <motion.div key="done" {...fade} className="w-full max-w-md flex flex-col gap-5">
+            <motion.div key="done" {...fade} className="w-full max-w-md flex flex-col gap-6">
               <StatusMessage variant="success" />
             </motion.div>
           )}
 
           {state === "error" && (
-            <motion.div key="error" {...fade} className="w-full max-w-md flex flex-col gap-5">
+            <motion.div key="error" {...fade} className="w-full max-w-md flex flex-col gap-6">
               <StatusMessage variant="error" />
             </motion.div>
           )}

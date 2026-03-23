@@ -60,7 +60,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
         className="flex flex-col items-center gap-4 py-6"
       >
         {/* Check icon */}
-        <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-success/[0.08] flex items-center justify-center">
           <svg
             className="w-6 h-6 text-success"
             fill="none"
@@ -140,7 +140,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
         className="flex flex-col items-center gap-4 py-6"
       >
         {/* Error icon */}
-        <div className="w-12 h-12 rounded-full bg-error/10 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-error/[0.08] flex items-center justify-center">
           <svg
             className="w-6 h-6 text-error"
             fill="none"

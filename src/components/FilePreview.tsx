@@ -69,7 +69,7 @@ export function FilePreview() {
       </div>
 
       {/* Format badge */}
-      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-[var(--radius-pill)] bg-white/[0.06] light:bg-black/[0.05] text-white/50 light:text-black/50">
+      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[var(--radius-pill)] bg-white/[0.06] light:bg-black/[0.05] text-white/50 light:text-black/50">
         {label}
       </span>
 

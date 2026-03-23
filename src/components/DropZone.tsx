@@ -36,24 +36,24 @@ export function DropZone({ isDragging }: DropZoneProps) {
       className={`
         w-full aspect-[4/3] rounded-[var(--radius-card)]
         flex flex-col items-center justify-center gap-3
-        border-2 border-dashed cursor-pointer
+        border border-dashed cursor-pointer
         transition-all duration-200
         ${
           isDragging
             ? "border-accent bg-accent/[0.06] scale-[1.02] shadow-[0_0_24px_rgba(37,99,235,0.12)]"
-            : "border-white/[0.10] light:border-black/[0.10] hover:border-white/20 light:hover:border-black/20"
+            : "border-white/[0.06] light:border-black/[0.06] hover:border-white/[0.10] light:hover:border-black/[0.10]"
         }
       `}
     >
       {/* Upload icon */}
       <svg
-        className={`w-10 h-10 transition-colors duration-200 ${
-          isDragging ? "text-accent" : "text-white/20 light:text-black/20"
+        className={`w-8 h-8 transition-colors duration-200 ${
+          isDragging ? "text-accent" : "text-white/15 light:text-black/15"
         }`}
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1.5}
+        strokeWidth={1}
       >
         <path
           strokeLinecap="round"
