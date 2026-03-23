@@ -42,12 +42,17 @@ impl ConversionEngine for LibreOfficeEngine {
             _ => "pdf",
         };
 
-        let mut child = tokio::process::Command::new("soffice")
-            .args([
-                "--headless",
-                "--convert-to", convert_to,
-                "--outdir", &out_dir.to_string_lossy(),
-            ])
+        let mut cmd = tokio::process::Command::new("soffice");
+        cmd.arg("--headless");
+
+        // PDF inputs need an explicit import filter so LibreOffice opens them
+        // as editable Writer documents instead of Draw pages.
+        if request.input_format == Format::Pdf {
+            cmd.arg("--infilter=writer_pdf_import");
+        }
+
+        let mut child = cmd
+            .args(["--convert-to", convert_to, "--outdir", &out_dir.to_string_lossy()])
             .arg(input)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
