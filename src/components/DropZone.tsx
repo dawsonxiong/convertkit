@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getFileInfo } from "../lib/tauri";
 import { useAppStore } from "../store/useAppStore";
-import { isSupportedFile } from "../lib/formats";
+import { isSupportedFile, FILE_DIALOG_FILTERS } from "../lib/formats";
 
 interface DropZoneProps {
   isDragging: boolean;
@@ -17,6 +17,7 @@ export function DropZone({ isDragging }: DropZoneProps) {
     const selected = await open({
       multiple: false,
       title: "Choose a file to convert",
+      filters: FILE_DIALOG_FILTERS,
     });
 
     if (selected) {

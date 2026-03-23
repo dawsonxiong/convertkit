@@ -6,6 +6,7 @@ import { useFileDrop } from "./hooks/useFileDrop";
 import { useProgress } from "./hooks/useProgress";
 import { useConvert } from "./hooks/useConvert";
 import { getFileInfo, revealInFinder } from "./lib/tauri";
+import { FILE_DIALOG_FILTERS } from "./lib/formats";
 import { DropZone } from "./components/DropZone";
 import { FilePreview } from "./components/FilePreview";
 import { FormatPicker } from "./components/FormatPicker";
@@ -42,7 +43,7 @@ export default function App() {
   }, [rejectionMessage, clearRejection]);
 
   const openFileBrowser = useCallback(async () => {
-    const selected = await open({ multiple: false, title: "Choose a file to convert" });
+    const selected = await open({ multiple: false, title: "Choose a file to convert", filters: FILE_DIALOG_FILTERS });
     if (selected) {
       try {
         const info = await getFileInfo(selected);

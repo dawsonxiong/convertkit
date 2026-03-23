@@ -96,6 +96,14 @@ export const COMPATIBLE_TARGETS: Record<string, string[]> = {
 /** Set of all supported file extensions (lowercase, no dot). */
 export const SUPPORTED_EXTENSIONS = new Set(Object.keys(FORMAT_INFO));
 
+/** All supported extensions as a list (for file dialog filters). */
+export const SUPPORTED_EXTENSIONS_LIST = Object.keys(FORMAT_INFO);
+
+/** File dialog filter that only shows supported formats. */
+export const FILE_DIALOG_FILTERS = [
+  { name: "Supported files", extensions: SUPPORTED_EXTENSIONS_LIST },
+];
+
 /** Check whether a file path has a supported extension. */
 export function isSupportedFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
