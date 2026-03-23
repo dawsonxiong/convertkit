@@ -1,6 +1,7 @@
 use log::warn;
 use serde::Serialize;
 use std::path::PathBuf;
+use tauri::Manager;
 
 use crate::formats::Format;
 
@@ -106,6 +107,40 @@ pub async fn get_file_info(path: String) -> Result<FileInfoResponse, String> {
         format: format.map(|f| f.extension().to_string()).unwrap_or_else(|| "unknown".to_string()),
         category: format.map(|f| f.category().to_string()).unwrap_or_else(|| "unknown".to_string()),
     })
+}
+
+/// Return the first file opened via Finder "Open With", if any.
+#[tauri::command]
+pub async fn get_opened_file(app: tauri::AppHandle) -> Option<String> {
+    let state = app.state::<crate::OpenedFiles>();
+    let mut opened = state.0.lock().expect("OpenedFiles lock poisoned");
+    opened.pop().map(|p| p.to_string_lossy().to_string())
+}
+
+/// Save base64-encoded clipboard image data to a temp file and return its path.
+#[tauri::command]
+pub async fn save_clipboard_image(data: String, mime: String) -> Result<String, String> {
+    let ext = match mime.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "image/bmp" => "bmp",
+        "image/svg+xml" => "svg",
+        _ => return Err(format!("Unsupported clipboard image type: {}", mime)),
+    };
+
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| format!("Invalid base64: {e}"))?;
+
+    let dir = std::env::temp_dir().join("convertkit_clipboard");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join(format!("clipboard.{}", ext));
+    std::fs::write(&path, &bytes).map_err(|e| format!("Failed to write temp file: {e}"))?;
+
+    Ok(path.to_string_lossy().to_string())
 }
 
 /// Open Finder with the given file selected.

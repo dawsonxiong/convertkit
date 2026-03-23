@@ -5,7 +5,9 @@ import { useAppStore } from "./store/useAppStore";
 import { useFileDrop } from "./hooks/useFileDrop";
 import { useProgress } from "./hooks/useProgress";
 import { useConvert } from "./hooks/useConvert";
-import { getFileInfo, revealInFinder } from "./lib/tauri";
+import { listen } from "@tauri-apps/api/event";
+import { getFileInfo, getOpenedFile, revealInFinder, saveClipboardImage } from "./lib/tauri";
+import { isSupportedFile } from "./lib/formats";
 import { FILE_DIALOG_FILTERS } from "./lib/formats";
 import { DropZone } from "./components/DropZone";
 import { FilePreview } from "./components/FilePreview";
@@ -30,10 +32,34 @@ export default function App() {
   const reset = useAppStore((s) => s.reset);
   const rejectionMessage = useAppStore((s) => s.rejectionMessage);
   const clearRejection = useAppStore((s) => s.clearRejection);
+  const setRejection = useAppStore((s) => s.setRejection);
   const { isDragging } = useFileDrop();
   const { convert, cancel } = useConvert();
 
   useProgress();
+
+  // Handle files opened via Finder "Open With"
+  const loadExternalFile = useCallback(async (path: string) => {
+    if (!isSupportedFile(path)) return;
+    try {
+      const info = await getFileInfo(path);
+      setFile(info);
+    } catch (err) {
+      console.error("Failed to load opened file:", err);
+    }
+  }, [setFile]);
+
+  useEffect(() => {
+    // Check for files buffered before frontend was ready
+    getOpenedFile().then((path) => {
+      if (path) loadExternalFile(path);
+    });
+    // Listen for files opened while app is running
+    const unlisten = listen<string>("file-opened", (event) => {
+      loadExternalFile(event.payload);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [loadExternalFile]);
 
   // Auto-clear rejection message after 3 seconds
   useEffect(() => {
@@ -87,6 +113,45 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [state, result, convert, cancel, reset, openFileBrowser]);
+
+  // ⌘V — paste image from clipboard
+  useEffect(() => {
+    const SUPPORTED_MIMES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"];
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (!SUPPORTED_MIMES.includes(item.type)) continue;
+
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (!blob) continue;
+
+        const buf = await blob.arrayBuffer();
+        const base64 = btoa(
+          new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ""),
+        );
+
+        try {
+          const path = await saveClipboardImage(base64, item.type);
+          const info = await getFileInfo(path);
+          setFile(info);
+        } catch (err) {
+          console.error("Failed to paste image:", err);
+          setRejection("Could not paste image from clipboard");
+        }
+        return;
+      }
+
+      // No supported image found in clipboard
+      setRejection("Clipboard does not contain a supported image");
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [setFile, setRejection]);
 
   if (!ready) {
     return (

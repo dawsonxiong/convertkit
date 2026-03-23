@@ -4,13 +4,21 @@ pub mod error;
 pub mod formats;
 pub mod progress;
 
-use commands::{cancel_conversion, check_dependencies, convert, get_file_info, read_file_thumbnail, reveal_in_finder};
+use commands::{
+    cancel_conversion, check_dependencies, convert, get_file_info, get_opened_file,
+    read_file_thumbnail, reveal_in_finder, save_clipboard_image,
+};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
+use tauri::{Emitter, Manager, RunEvent};
 use tokio_util::sync::CancellationToken;
 
 /// Tracks active conversion jobs so they can be cancelled.
 pub struct ActiveJobs(pub Mutex<HashMap<String, CancellationToken>>);
+
+/// Stores file paths received via Finder "Open With" before the frontend is ready.
+pub struct OpenedFiles(pub Mutex<Vec<PathBuf>>);
 
 /// Ensure common tool directories are on PATH so bundled .app can find
 /// Homebrew/Cargo binaries that aren't on the default macOS PATH.
@@ -41,7 +49,7 @@ fn ensure_path() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     ensure_path();
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_drag::init())
@@ -56,16 +64,42 @@ pub fn run() {
                 .build(),
         )
         .manage(ActiveJobs(Mutex::new(HashMap::new())))
+        .manage(OpenedFiles(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
             convert,
             cancel_conversion,
             check_dependencies,
             get_file_info,
+            get_opened_file,
             read_file_thumbnail,
             reveal_in_finder,
+            save_clipboard_image,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running ConvertKit");
+        .build(tauri::generate_context!())
+        .expect("error while building ConvertKit");
+
+    app.run(|app_handle, event| {
+        if let RunEvent::Opened { urls } = event {
+            let paths: Vec<PathBuf> = urls
+                .iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .collect();
+
+            if paths.is_empty() {
+                return;
+            }
+
+            // Try to emit directly to the frontend
+            let first = paths[0].to_string_lossy().to_string();
+            if app_handle.emit("file-opened", &first).is_err() {
+                // Frontend not ready yet — buffer it
+                if let Some(state) = app_handle.try_state::<OpenedFiles>() {
+                    let mut opened = state.0.lock().expect("OpenedFiles lock poisoned");
+                    opened.extend(paths);
+                }
+            }
+        }
+    });
 }
 
 /// Returns ~/Library/Logs/ConvertKit/ on macOS, falling back to a temp dir.

@@ -38,3 +38,13 @@ export async function revealInFinder(path: string): Promise<void> {
 export async function readFileThumbnail(path: string): Promise<string> {
   return invoke<string>("read_file_thumbnail", { path });
 }
+
+/** Get a file that was opened via Finder "Open With" before the frontend loaded. */
+export async function getOpenedFile(): Promise<string | null> {
+  return invoke<string | null>("get_opened_file");
+}
+
+/** Save base64-encoded clipboard image data to a temp file and return its path. */
+export async function saveClipboardImage(data: string, mime: string): Promise<string> {
+  return invoke<string>("save_clipboard_image", { data, mime });
+}

@@ -32,6 +32,37 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["jpg", "jpeg", "png", "webp", "tiff", "tif", "bmp", "gif", "ico", "avif", "heic", "heif"],
+        "name": "Image",
+        "mimeType": "image/*",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["mp4", "m4v", "mov", "webm", "mkv", "avi"],
+        "name": "Video",
+        "mimeType": "video/*",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["mp3", "wav", "aac", "flac", "ogg", "oga", "m4a"],
+        "name": "Audio",
+        "mimeType": "audio/*",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["pdf", "docx", "html", "htm", "md", "markdown", "epub", "txt"],
+        "name": "Document",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["svg"],
+        "name": "SVG Vector",
+        "mimeType": "image/svg+xml",
+        "role": "Viewer"
+      }
     ]
   }
 }
