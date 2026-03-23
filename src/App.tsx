@@ -106,18 +106,9 @@ export default function App() {
           {state === "empty" && (
             <motion.div key="empty" {...fade} className="w-full max-w-md flex flex-col gap-3">
               <DropZone isDragging={isDragging} />
-              <AnimatePresence>
-                {rejectionMessage && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className="text-xs text-error text-center"
-                  >
-                    {rejectionMessage}
-                  </motion.p>
-                )}
-              </AnimatePresence>
+              {rejectionMessage && (
+                <p className="text-xs text-error text-center">{rejectionMessage}</p>
+              )}
             </motion.div>
           )}
 
