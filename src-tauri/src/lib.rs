@@ -12,8 +12,35 @@ use tokio_util::sync::CancellationToken;
 /// Tracks active conversion jobs so they can be cancelled.
 pub struct ActiveJobs(pub Mutex<HashMap<String, CancellationToken>>);
 
+/// Ensure common tool directories are on PATH so bundled .app can find
+/// Homebrew/Cargo binaries that aren't on the default macOS PATH.
+fn ensure_path() {
+    let extra = [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+    ];
+
+    let mut path = std::env::var("PATH").unwrap_or_default();
+
+    if let Some(home) = std::env::var_os("HOME") {
+        let cargo_bin = std::path::PathBuf::from(&home).join(".cargo/bin");
+        let mut dirs: Vec<String> = extra.iter().map(|s| s.to_string()).collect();
+        dirs.push(cargo_bin.to_string_lossy().to_string());
+
+        for dir in dirs {
+            if !path.split(':').any(|p| p == dir) {
+                path = format!("{}:{}", dir, path);
+            }
+        }
+    }
+
+    std::env::set_var("PATH", &path);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    ensure_path();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
