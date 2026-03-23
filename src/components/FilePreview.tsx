@@ -5,7 +5,7 @@ import { FORMAT_INFO } from "../lib/formats";
 import { formatFileSize } from "../lib/fileUtils";
 import { readFileThumbnail } from "../lib/tauri";
 
-const PREVIEWABLE = new Set(["image", "vector"]);
+const PREVIEWABLE = new Set(["image", "vector", "document"]);
 
 export function FilePreview() {
   const file = useAppStore((s) => s.file);

@@ -128,6 +128,14 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
     let p = PathBuf::from(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin").to_lowercase();
 
+    // Document formats — generate thumbnail via macOS Quick Look.
+    match ext.as_str() {
+        "pdf" | "docx" | "doc" | "epub" | "html" | "htm" | "txt" | "md" => {
+            return quicklook_thumbnail(&p).await;
+        }
+        _ => {}
+    }
+
     let mime = match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
@@ -177,6 +185,41 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     // Thumbnail is always PNG from magick.
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+/// Generate a thumbnail for documents using macOS Quick Look (qlmanage).
+async fn quicklook_thumbnail(path: &std::path::Path) -> Result<String, String> {
+    let tmp = std::env::temp_dir().join("convertkit_ql");
+    let _ = std::fs::create_dir_all(&tmp);
+
+    let output = tokio::process::Command::new("qlmanage")
+        .args(["-t", "-s", "400", "-o"])
+        .arg(&tmp)
+        .arg(path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run qlmanage: {e}"))?;
+
+    if !output.status.success() {
+        return Err("Quick Look thumbnail generation failed".into());
+    }
+
+    // qlmanage writes <filename>.png in the output dir
+    let fname = path.file_name().unwrap_or_default();
+    let thumb_path = tmp.join(format!("{}.png", fname.to_string_lossy()));
+
+    if !thumb_path.exists() {
+        return Err("Quick Look thumbnail not found".into());
+    }
+
+    let bytes = std::fs::read(&thumb_path).map_err(|e| format!("Cannot read thumbnail: {e}"))?;
+    let _ = std::fs::remove_file(&thumb_path);
+
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(format!("data:image/png;base64,{}", b64))
 }
 
