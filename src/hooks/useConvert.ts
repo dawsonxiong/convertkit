@@ -35,10 +35,17 @@ export function useConvert() {
 
   const cancel = useCallback(async () => {
     if (!jobId) return;
+    // Safety net: force-reset if backend doesn't respond within 5s
+    const timeout = setTimeout(() => {
+      if (useAppStore.getState().state === "converting") {
+        useAppStore.getState().setError({ kind: "Cancelled", detail: {} });
+      }
+    }, 5000);
     try {
       await cancelConversion(jobId);
     } catch (err) {
       console.error("Failed to cancel conversion:", err);
+      clearTimeout(timeout);
     }
   }, [jobId]);
 
