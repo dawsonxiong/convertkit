@@ -171,6 +171,14 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
         _ => {}
     }
 
+    // Video formats — extract a frame with FFmpeg.
+    match ext.as_str() {
+        "mp4" | "m4v" | "mov" | "webm" | "mkv" | "avi" => {
+            return ffmpeg_thumbnail(&p).await;
+        }
+        _ => {}
+    }
+
     let mime = match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
@@ -255,6 +263,44 @@ async fn quicklook_thumbnail(path: &std::path::Path) -> Result<String, String> {
 
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+/// Extract a single frame from a video using FFmpeg and return as base64 PNG.
+async fn ffmpeg_thumbnail(path: &std::path::Path) -> Result<String, String> {
+    let output = tokio::process::Command::new("ffmpeg")
+        .args(["-i"])
+        .arg(path)
+        .args(["-ss", "00:00:01", "-frames:v", "1", "-vf", "scale=400:-1", "-f", "image2pipe", "-vcodec", "png", "-"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run ffmpeg for thumbnail: {e}"))?;
+
+    if !output.status.success() || output.stdout.is_empty() {
+        // Try frame at 0s for very short videos
+        let output2 = tokio::process::Command::new("ffmpeg")
+            .args(["-i"])
+            .arg(path)
+            .args(["-frames:v", "1", "-vf", "scale=400:-1", "-f", "image2pipe", "-vcodec", "png", "-"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run ffmpeg for thumbnail: {e}"))?;
+
+        if !output2.status.success() || output2.stdout.is_empty() {
+            return Err("FFmpeg thumbnail extraction failed".into());
+        }
+
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&output2.stdout);
+        return Ok(format!("data:image/png;base64,{}", b64));
+    }
+
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&output.stdout);
     Ok(format!("data:image/png;base64,{}", b64))
 }
 
