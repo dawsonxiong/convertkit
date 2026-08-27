@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
@@ -31,7 +31,7 @@ impl ConversionEngine for VTracerEngine {
             stage: "Tracing to vector…".into(),
         });
 
-        let mut child = tokio::process::Command::new("vtracer")
+        let mut child = tool_command("vtracer")
             .args([
                 "--input", &input.to_string_lossy(),
                 "--output", &output.to_string_lossy(),

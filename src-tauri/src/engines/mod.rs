@@ -14,6 +14,29 @@ use tokio_util::sync::CancellationToken;
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 
+/// Resolve CLI tools for both terminal-launched development builds and Finder
+/// or Spotlight-launched app bundles, whose inherited PATH is minimal.
+pub fn resolve_tool(name: &str) -> Option<PathBuf> {
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let mut search_paths = std::env::split_paths(&inherited).collect::<Vec<_>>();
+    for directory in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let path = PathBuf::from(directory);
+        if !search_paths.contains(&path) {
+            search_paths.push(path);
+        }
+    }
+
+    search_paths
+        .into_iter()
+        .map(|directory| directory.join(name))
+        .find(|path| path.is_file())
+}
+
+/// Create a subprocess command using the resolved executable path.
+pub fn tool_command(name: &str) -> tokio::process::Command {
+    tokio::process::Command::new(resolve_tool(name).unwrap_or_else(|| PathBuf::from(name)))
+}
+
 // ---------------------------------------------------------------------------
 // Shared types
 // ---------------------------------------------------------------------------
@@ -60,7 +83,7 @@ pub trait ConversionEngine: Send + Sync {
 
     /// Quick check whether the required tool is installed.
     fn is_available(&self) -> bool {
-        which::which(self.required_tool()).is_ok()
+        resolve_tool(self.required_tool()).is_some()
     }
 }
 

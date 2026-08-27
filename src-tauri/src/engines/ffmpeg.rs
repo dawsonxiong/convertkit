@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::{resolve_tool, tool_command, ConversionEngine, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::{parse_ffmpeg_progress, ProgressPayload};
@@ -86,7 +86,11 @@ impl ConversionEngine for FfmpegEngine {
 
         debug!("ffmpeg {}", args.join(" "));
 
-        let mut child = tokio::process::Command::new("ffmpeg")
+        let ffmpeg = resolve_tool("ffmpeg").ok_or_else(|| ConversionError::MissingDependency {
+            tool: "ffmpeg".into(),
+            install_hint: "Install ffmpeg with Homebrew".into(),
+        })?;
+        let mut child = tokio::process::Command::new(ffmpeg)
             .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -115,6 +119,19 @@ impl ConversionEngine for FfmpegEngine {
             }
         });
 
+        let stderr = child.stderr.take();
+        let stderr_handle = tokio::spawn(async move {
+            match stderr {
+                Some(stderr) => {
+                    let mut reader = BufReader::new(stderr);
+                    let mut output = String::new();
+                    let _ = tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut output).await;
+                    output
+                }
+                None => String::new(),
+            }
+        });
+
         let status = tokio::select! {
             result = child.wait() => {
                 result.map_err(|e| ConversionError::ProcessFailed {
@@ -131,9 +148,9 @@ impl ConversionEngine for FfmpegEngine {
         };
 
         let _ = progress_handle.await;
+        let stderr = stderr_handle.await.unwrap_or_default();
 
         if !status.success() {
-            let stderr = read_stderr(&mut child).await;
             super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "FFmpeg conversion failed".into(),
@@ -235,7 +252,7 @@ async fn convert_to_gif(
 
 /// Get media duration in milliseconds via ffprobe.
 async fn probe_duration_ms(path: &Path) -> Option<u64> {
-    let output = tokio::process::Command::new("ffprobe")
+    let output = tool_command("ffprobe")
         .args([
             "-v", "quiet",
             "-show_entries", "format=duration",
@@ -253,7 +270,7 @@ async fn probe_duration_ms(path: &Path) -> Option<u64> {
 
 /// Check if streams can be copied directly into the target container.
 async fn can_copy_streams(path: &Path, target: Format) -> bool {
-    let output = match tokio::process::Command::new("ffprobe")
+    let output = match tool_command("ffprobe")
         .args([
             "-v", "quiet",
             "-show_entries", "stream=codec_name",
@@ -359,7 +376,7 @@ async fn run_ffmpeg_simple(
     args: &[&str],
     cancel_token: &CancellationToken,
 ) -> Result<std::process::ExitStatus, ConversionError> {
-    let mut child = tokio::process::Command::new("ffmpeg")
+    let mut child = tool_command("ffmpeg")
         .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())

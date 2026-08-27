@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
@@ -72,7 +72,7 @@ impl ConversionEngine for ImageMagickEngine {
         args.push(output.to_string_lossy().to_string());
 
         // Spawn the child process.
-        let mut child = tokio::process::Command::new("magick")
+        let mut child = tool_command("magick")
             .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -82,6 +82,19 @@ impl ConversionEngine for ImageMagickEngine {
                 stderr: String::new(),
                 exit_code: None,
             })?;
+
+        let stderr = child.stderr.take();
+        let stderr_handle = tokio::spawn(async move {
+            match stderr {
+                Some(mut stderr) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut output = String::new();
+                    let _ = stderr.read_to_string(&mut output).await;
+                    output
+                }
+                None => String::new(),
+            }
+        });
 
         // Wait for completion or cancellation.
         let status = tokio::select! {
@@ -100,17 +113,8 @@ impl ConversionEngine for ImageMagickEngine {
             }
         };
 
+        let stderr = stderr_handle.await.unwrap_or_default();
         if !status.success() {
-            // Read stderr for diagnostics.
-            let stderr = match child.stderr {
-                Some(ref mut s) => {
-                    use tokio::io::AsyncReadExt;
-                    let mut buf = String::new();
-                    let _ = s.read_to_string(&mut buf).await;
-                    buf
-                }
-                None => String::new(),
-            };
             super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "ImageMagick conversion failed".to_string(),

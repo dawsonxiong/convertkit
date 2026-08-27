@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use tauri::Manager;
 
+use crate::engines::{resolve_tool, tool_command};
 use crate::formats::Format;
 
 // ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
     }
 
     // For raster images, shell out to magick to get a 200x200 PNG thumbnail.
-    let output = tokio::process::Command::new("magick")
+    let output = tool_command("magick")
         .arg(&p)
         .args(["-resize", "200x200", "-quality", "80", "png:-"])
         .output()
@@ -268,7 +269,7 @@ async fn quicklook_thumbnail(path: &std::path::Path) -> Result<String, String> {
 
 /// Extract a single frame from a video using FFmpeg and return as base64 PNG.
 async fn ffmpeg_thumbnail(path: &std::path::Path) -> Result<String, String> {
-    let output = tokio::process::Command::new("ffmpeg")
+    let output = tool_command("ffmpeg")
         .args(["-i"])
         .arg(path)
         .args(["-ss", "00:00:01", "-frames:v", "1", "-vf", "scale=400:-1", "-f", "image2pipe", "-vcodec", "png", "-"])
@@ -280,7 +281,7 @@ async fn ffmpeg_thumbnail(path: &std::path::Path) -> Result<String, String> {
 
     if !output.status.success() || output.stdout.is_empty() {
         // Try frame at 0s for very short videos
-        let output2 = tokio::process::Command::new("ffmpeg")
+        let output2 = tool_command("ffmpeg")
             .args(["-i"])
             .arg(path)
             .args(["-frames:v", "1", "-vf", "scale=400:-1", "-f", "image2pipe", "-vcodec", "png", "-"])
@@ -325,7 +326,7 @@ async fn read_file_thumbnail_fallback(p: &PathBuf, mime: &str) -> Result<String,
 
 /// Try to locate a tool and grab its version string.
 async fn probe_tool(name: &str) -> (bool, Option<String>) {
-    let path = match which::which(name) {
+    let path = match resolve_tool(name) {
         Ok(p) => p,
         Err(_) => return (false, None),
     };

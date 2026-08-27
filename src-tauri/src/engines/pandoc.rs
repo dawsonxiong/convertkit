@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
@@ -50,7 +50,7 @@ impl ConversionEngine for PandocEngine {
 
         args.extend(["-o".into(), output.to_string_lossy().into()]);
 
-        let mut child = tokio::process::Command::new("pandoc")
+        let mut child = tool_command("pandoc")
             .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

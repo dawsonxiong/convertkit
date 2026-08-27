@@ -3,7 +3,7 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::Format;
 use crate::progress::ProgressPayload;
@@ -42,7 +42,7 @@ impl ConversionEngine for LibreOfficeEngine {
             _ => "pdf",
         };
 
-        let mut cmd = tokio::process::Command::new("soffice");
+        let mut cmd = tool_command("soffice");
         cmd.arg("--headless");
 
         // PDF inputs need an explicit import filter so LibreOffice opens them
