@@ -2,84 +2,90 @@ import { useCallback } from "react";
 import { motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getFileInfo } from "../lib/tauri";
+import {
+  getOperationDialogFilter,
+  isPathSupportedForOperation,
+  OPERATIONS,
+} from "../lib/operations";
 import { useAppStore } from "../store/useAppStore";
-import { isSupportedFile, FILE_DIALOG_FILTERS } from "../lib/formats";
 
 interface DropZoneProps {
   isDragging: boolean;
+  disabled?: boolean;
 }
 
-export function DropZone({ isDragging }: DropZoneProps) {
-  const setFile = useAppStore((s) => s.setFile);
-  const setRejection = useAppStore((s) => s.setRejection);
+export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
+  const operation = useAppStore((store) => store.operation);
+  const addFiles = useAppStore((store) => store.addFiles);
+  const setRejection = useAppStore((store) => store.setRejection);
+  const meta = OPERATIONS[operation];
 
   const handleClick = useCallback(async () => {
     const selected = await open({
-      multiple: false,
-      title: "Choose a file to convert",
-      filters: FILE_DIALOG_FILTERS,
+      multiple: true,
+      title: operation === "resize" ? "Choose images to resize" : "Choose files to convert",
+      filters: getOperationDialogFilter(operation),
     });
 
-    if (selected) {
-      if (!isSupportedFile(selected)) {
-        const ext = selected.split(".").pop()?.toLowerCase() ?? "unknown";
-        setRejection(`".${ext}" files are not supported`);
-        return;
-      }
-      try {
-        const info = await getFileInfo(selected);
-        setFile(info);
-      } catch (err) {
-        console.error("Failed to get file info:", err);
-      }
+    if (!selected) return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    const supported = paths.filter((path) => isPathSupportedForOperation(path, operation));
+    if (supported.length === 0) {
+      setRejection(
+        operation === "resize"
+          ? "Resize works with raster images"
+          : "Those file types are not supported",
+      );
+      return;
     }
-  }, [setFile, setRejection]);
+
+    try {
+      addFiles(await Promise.all(supported.map(getFileInfo)));
+      if (supported.length < paths.length) {
+        setRejection(`${paths.length - supported.length} unsupported file(s) skipped`);
+      }
+    } catch (error) {
+      console.error("Failed to get file info:", error);
+      setRejection("One or more files could not be opened");
+    }
+  }, [addFiles, operation, setRejection]);
 
   return (
     <motion.button
       type="button"
       onClick={handleClick}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
-      className={`
-        w-full aspect-[4/3] rounded-[var(--radius-card)]
-        flex flex-col items-center justify-center gap-3
-        border border-dashed cursor-pointer
-        transition-all duration-200
-        ${
-          isDragging
-            ? "border-accent bg-accent/[0.06] scale-[1.02] shadow-[0_0_24px_rgba(37,99,235,0.12)]"
-            : "border-white/[0.06] light:border-black/[0.06] hover:border-white/[0.10] light:hover:border-black/[0.10]"
-        }
-      `}
+      disabled={disabled}
+      className={`drop-grid group relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden border border-dashed p-6 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+        isDragging
+          ? "border-[#b0c6ff] bg-[#b0c6ff]/[0.05]"
+          : "border-[#44464f] hover:border-[#696b75]"
+      }`}
     >
-      {/* Upload icon */}
       <svg
-        className={`w-8 h-8 transition-colors duration-200 ${
-          isDragging ? "text-accent" : "text-white/15 light:text-black/15"
-        }`}
+        className="size-10 text-white"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={1}
+        strokeWidth={1.35}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
       >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-        />
+        <path d="M7.5 3.5h6.75L18.5 7.75V20.5h-11z" />
+        <path d="M14 3.75V8h4.25M13 16V9.5m0 0-2.5 2.5m2.5-2.5 2.5 2.5" />
       </svg>
 
-      <div className="flex flex-col items-center gap-1">
-        <span
-          className={`text-sm font-medium transition-colors duration-200 ${
-            isDragging ? "text-accent" : "text-white/50 light:text-black/50"
-          }`}
-        >
-          {isDragging ? "Drop to convert" : "Drop file here"}
-        </span>
-        <span className="text-xs text-white/25 light:text-black/25">or click to browse</span>
-      </div>
+      <span className="mt-5 text-xl font-semibold text-[#e5e1e4]">
+        {isDragging ? "Release to add file" : meta.dropLabel}
+      </span>
+      <span className="mt-2 max-w-64 text-sm leading-relaxed text-[#92939d]">
+        {operation === "resize"
+          ? "PNG, JPEG, WebP, GIF, HEIC, TIFF, BMP, and AVIF."
+          : "Images, video, audio, documents, and vectors."}
+      </span>
+      <span className="mt-5 flex h-8 items-center border border-[#44464f] bg-[#201f22] px-4 text-[11px] font-medium text-[#e5e1e4] transition-colors group-hover:bg-[#2a2a2c]">
+        Browse files
+      </span>
     </motion.button>
   );
 }

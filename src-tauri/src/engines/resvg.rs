@@ -29,19 +29,23 @@ impl ConversionEngine for ResvgEngine {
         let input = &request.input_path;
         let output = &request.output_path;
 
-        let _ = app.emit("conversion-progress", ProgressPayload {
-            percent: -1,
-            stage: "Rendering SVG…".into(),
-        });
+        let _ = app.emit(
+            "conversion-progress",
+            ProgressPayload {
+                percent: -1,
+                stage: "Rendering SVG…".into(),
+            },
+        );
 
         // Default to 2x scale for retina-friendly output.
         let mut child = tool_command("resvg")
             .args([
                 &input.to_string_lossy().to_string(),
                 &output.to_string_lossy().to_string(),
-                "--dpi", "192",
+                "--dpi",
+                "192",
             ])
-            .stdout(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| ConversionError::ProcessFailed {
@@ -49,6 +53,19 @@ impl ConversionEngine for ResvgEngine {
                 stderr: String::new(),
                 exit_code: None,
             })?;
+
+        let stderr = child.stderr.take();
+        let stderr_handle = tokio::spawn(async move {
+            match stderr {
+                Some(mut stderr) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut output = String::new();
+                    let _ = stderr.read_to_string(&mut output).await;
+                    output
+                }
+                None => String::new(),
+            }
+        });
 
         let status = tokio::select! {
             result = child.wait() => {
@@ -65,16 +82,8 @@ impl ConversionEngine for ResvgEngine {
             }
         };
 
+        let stderr = stderr_handle.await.unwrap_or_default();
         if !status.success() {
-            let stderr = match child.stderr {
-                Some(ref mut s) => {
-                    use tokio::io::AsyncReadExt;
-                    let mut buf = String::new();
-                    let _ = s.read_to_string(&mut buf).await;
-                    buf
-                }
-                None => String::new(),
-            };
             super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "resvg rendering failed".into(),
@@ -91,4 +100,3 @@ impl ConversionEngine for ResvgEngine {
         })
     }
 }
-

@@ -82,32 +82,58 @@ export const COMPATIBLE_TARGETS: Record<string, string[]> = {
   m4a: without(AUDIO_FORMATS, "m4a"),
 
   // Document -> pandoc / libreoffice matrix
-  pdf: ["docx"],
+  pdf: [],
   docx: ["pdf", "html", "md", "txt", "epub"],
   html: ["pdf", "docx", "md", "txt", "epub"],
   md: ["pdf", "docx", "html", "txt", "epub"],
   epub: ["pdf", "docx", "html", "md", "txt"],
-  txt: ["docx", "html", "md", "epub"],
+  txt: ["pdf", "docx", "html", "md", "epub"],
 
-  // SVG -> raster (resvg only supports SVG->PNG)
-  svg: ["png"],
+  // SVG -> raster (resvg handles PNG; ImageMagick handles the rest)
+  svg: [...IMAGE_FORMATS],
 };
 
 /** Set of all supported file extensions (lowercase, no dot). */
 export const SUPPORTED_EXTENSIONS = new Set(Object.keys(FORMAT_INFO));
+
+const EXTENSION_ALIASES: Record<string, string> = {
+  jpeg: "jpg",
+  tif: "tiff",
+  heif: "heic",
+  m4v: "mp4",
+  oga: "ogg",
+  opus: "ogg",
+  htm: "html",
+  markdown: "md",
+  text: "txt",
+  wave: "wav",
+};
+
+export const SUPPORTED_INPUT_EXTENSIONS_LIST = [
+  ...SUPPORTED_EXTENSIONS,
+  ...Object.keys(EXTENSION_ALIASES),
+];
+
+const SUPPORTED_INPUT_EXTENSIONS = new Set(SUPPORTED_INPUT_EXTENSIONS_LIST);
 
 /** All supported extensions as a list (for file dialog filters). */
 export const SUPPORTED_EXTENSIONS_LIST = Object.keys(FORMAT_INFO);
 
 /** File dialog filter that only shows supported formats. */
 export const FILE_DIALOG_FILTERS = [
-  { name: "Supported files", extensions: SUPPORTED_EXTENSIONS_LIST },
+  { name: "Supported files", extensions: SUPPORTED_INPUT_EXTENSIONS_LIST },
 ];
 
 /** Check whether a file path has a supported extension. */
 export function isSupportedFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return SUPPORTED_EXTENSIONS.has(ext);
+  return SUPPORTED_INPUT_EXTENSIONS.has(ext);
+}
+
+/** Convert a supported alias into the canonical format key. */
+export function normalizeExtension(extension: string): string {
+  const normalized = extension.toLowerCase();
+  return EXTENSION_ALIASES[normalized] ?? normalized;
 }
 
 /** Returns the list of compatible output format keys for a given input format. */

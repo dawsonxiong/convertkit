@@ -74,7 +74,7 @@ impl ConversionEngine for ImageMagickEngine {
         // Spawn the child process.
         let mut child = tool_command("magick")
             .args(&args)
-            .stdout(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| ConversionError::ProcessFailed {
@@ -133,4 +133,3 @@ impl ConversionEngine for ImageMagickEngine {
         })
     }
 }
-

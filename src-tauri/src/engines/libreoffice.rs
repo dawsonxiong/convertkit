@@ -31,10 +31,13 @@ impl ConversionEngine for LibreOfficeEngine {
         let output = &request.output_path;
         let out_dir = output.parent().unwrap_or(Path::new("."));
 
-        let _ = app.emit("conversion-progress", ProgressPayload {
-            percent: -1,
-            stage: "Converting with LibreOffice…".into(),
-        });
+        let _ = app.emit(
+            "conversion-progress",
+            ProgressPayload {
+                percent: -1,
+                stage: "Converting with LibreOffice…".into(),
+            },
+        );
 
         let convert_to = match request.output_format {
             Format::Pdf => "pdf",
@@ -52,9 +55,14 @@ impl ConversionEngine for LibreOfficeEngine {
         }
 
         let mut child = cmd
-            .args(["--convert-to", convert_to, "--outdir", &out_dir.to_string_lossy()])
+            .args([
+                "--convert-to",
+                convert_to,
+                "--outdir",
+                &out_dir.to_string_lossy(),
+            ])
             .arg(input)
-            .stdout(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| ConversionError::ProcessFailed {
@@ -62,6 +70,19 @@ impl ConversionEngine for LibreOfficeEngine {
                 stderr: String::new(),
                 exit_code: None,
             })?;
+
+        let stderr = child.stderr.take();
+        let stderr_handle = tokio::spawn(async move {
+            match stderr {
+                Some(mut stderr) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut output = String::new();
+                    let _ = stderr.read_to_string(&mut output).await;
+                    output
+                }
+                None => String::new(),
+            }
+        });
 
         let status = tokio::select! {
             result = child.wait() => {
@@ -78,10 +99,11 @@ impl ConversionEngine for LibreOfficeEngine {
             }
         };
 
+        let stderr = stderr_handle.await.unwrap_or_default();
         if !status.success() {
             return Err(ConversionError::ProcessFailed {
                 message: "LibreOffice conversion failed".into(),
-                stderr: String::new(),
+                stderr,
                 exit_code: status.code(),
             });
         }
@@ -89,23 +111,28 @@ impl ConversionEngine for LibreOfficeEngine {
         // LibreOffice writes to outdir with the same stem but new extension.
         // However, the naming can be unpredictable (e.g. spaces replaced, etc.),
         // so search for any file matching {stem}.{convert_to} in the output dir.
-        let stem = input.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let stem = input
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let expected_ext = format!(".{}", convert_to);
 
         let lo_output = std::fs::read_dir(out_dir)
             .ok()
             .and_then(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.path())
-                    .find(|p| {
-                        let fname = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
-                        let ext_matches = p
-                            .extension()
-                            .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-                            == Some(expected_ext.clone());
-                        ext_matches && fname.starts_with(&stem)
-                    })
+                entries.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| {
+                    let fname = p
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    let ext_matches = p
+                        .extension()
+                        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+                        == Some(expected_ext.clone());
+                    ext_matches && fname.starts_with(&stem)
+                })
             })
             .unwrap_or_else(|| {
                 // Fall back to the original predictable name.

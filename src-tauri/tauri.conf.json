@@ -13,9 +13,14 @@
     "windows": [
       {
         "title": "ConvertKit",
-        "width": 480,
-        "height": 640,
-        "resizable": false,
+        "width": 1100,
+        "height": 760,
+        "minWidth": 900,
+        "minHeight": 640,
+        "resizable": true,
+        "theme": "Dark",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "center": true
       }
     ],

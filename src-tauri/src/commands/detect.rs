@@ -27,6 +27,8 @@ pub struct FileInfoResponse {
     pub size: u64,
     pub format: String,
     pub category: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -100,13 +102,28 @@ pub async fn get_file_info(path: String) -> Result<FileInfoResponse, String> {
         }
     }
 
+    let (width, height) = if matches!(
+        format.map(|f| f.category()),
+        Some(crate::formats::FileCategory::Image)
+    ) {
+        probe_image_dimensions(&p).await.unwrap_or((None, None))
+    } else {
+        (None, None)
+    };
+
     Ok(FileInfoResponse {
         path,
         name,
         extension: extension.clone(),
         size: meta.len(),
-        format: format.map(|f| f.extension().to_string()).unwrap_or_else(|| "unknown".to_string()),
-        category: format.map(|f| f.category().to_string()).unwrap_or_else(|| "unknown".to_string()),
+        format: format
+            .map(|f| f.extension().to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        category: format
+            .map(|f| f.category().to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        width,
+        height,
     })
 }
 
@@ -162,7 +179,11 @@ pub async fn reveal_in_finder(path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
     let p = PathBuf::from(&path);
-    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("bin").to_lowercase();
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("bin")
+        .to_lowercase();
 
     // Document formats — generate thumbnail via macOS Quick Look.
     match ext.as_str() {
@@ -197,12 +218,15 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
     if ext == "svg" {
         use std::io::Read;
         let mut file = std::fs::File::open(&p).map_err(|e| format!("Cannot open file: {e}"))?;
-        let meta = file.metadata().map_err(|e| format!("Cannot read metadata: {e}"))?;
+        let meta = file
+            .metadata()
+            .map_err(|e| format!("Cannot read metadata: {e}"))?;
         if meta.len() > 10 * 1024 * 1024 {
             return Err("File too large for thumbnail".into());
         }
         let mut buf = Vec::with_capacity(meta.len() as usize);
-        file.read_to_end(&mut buf).map_err(|e| format!("Read error: {e}"))?;
+        file.read_to_end(&mut buf)
+            .map_err(|e| format!("Read error: {e}"))?;
         use base64::Engine;
         let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
         return Ok(format!("data:{};base64,{}", mime, b64));
@@ -272,7 +296,19 @@ async fn ffmpeg_thumbnail(path: &std::path::Path) -> Result<String, String> {
     let output = tool_command("ffmpeg")
         .args(["-i"])
         .arg(path)
-        .args(["-ss", "00:00:01", "-frames:v", "1", "-vf", "scale=400:-1", "-f", "image2pipe", "-vcodec", "png", "-"])
+        .args([
+            "-ss",
+            "00:00:01",
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=400:-1",
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "png",
+            "-",
+        ])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
@@ -284,7 +320,17 @@ async fn ffmpeg_thumbnail(path: &std::path::Path) -> Result<String, String> {
         let output2 = tool_command("ffmpeg")
             .args(["-i"])
             .arg(path)
-            .args(["-frames:v", "1", "-vf", "scale=400:-1", "-f", "image2pipe", "-vcodec", "png", "-"])
+            .args([
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=400:-1",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "png",
+                "-",
+            ])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
@@ -309,12 +355,15 @@ async fn ffmpeg_thumbnail(path: &std::path::Path) -> Result<String, String> {
 async fn read_file_thumbnail_fallback(p: &PathBuf, mime: &str) -> Result<String, String> {
     use std::io::Read;
     let mut file = std::fs::File::open(p).map_err(|e| format!("Cannot open file: {e}"))?;
-    let meta = file.metadata().map_err(|e| format!("Cannot read metadata: {e}"))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| format!("Cannot read metadata: {e}"))?;
     if meta.len() > 10 * 1024 * 1024 {
         return Err("File too large for thumbnail".into());
     }
     let mut buf = Vec::with_capacity(meta.len() as usize);
-    file.read_to_end(&mut buf).map_err(|e| format!("Read error: {e}"))?;
+    file.read_to_end(&mut buf)
+        .map_err(|e| format!("Read error: {e}"))?;
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
     Ok(format!("data:{};base64,{}", mime, b64))
@@ -327,8 +376,8 @@ async fn read_file_thumbnail_fallback(p: &PathBuf, mime: &str) -> Result<String,
 /// Try to locate a tool and grab its version string.
 async fn probe_tool(name: &str) -> (bool, Option<String>) {
     let path = match resolve_tool(name) {
-        Ok(p) => p,
-        Err(_) => return (false, None),
+        Some(p) => p,
+        None => return (false, None),
     };
 
     // Attempt to get a version string via `<tool> --version`.
@@ -348,4 +397,25 @@ async fn probe_tool(name: &str) -> (bool, Option<String>) {
     };
 
     (true, version)
+}
+
+async fn probe_image_dimensions(
+    path: &std::path::Path,
+) -> Result<(Option<u32>, Option<u32>), String> {
+    let first_frame = format!("{}[0]", path.to_string_lossy());
+    let output = tool_command("magick")
+        .args(["identify", "-ping", "-format", "%w %h", &first_frame])
+        .output()
+        .await
+        .map_err(|error| format!("Failed to inspect image dimensions: {error}"))?;
+
+    if !output.status.success() {
+        return Ok((None, None));
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout);
+    let mut parts = value.split_whitespace();
+    let width = parts.next().and_then(|part| part.parse::<u32>().ok());
+    let height = parts.next().and_then(|part| part.parse::<u32>().ok());
+    Ok((width, height))
 }

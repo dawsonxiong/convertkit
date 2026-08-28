@@ -44,7 +44,7 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
   if (checking) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-white/40 light:text-black/40">Checking dependencies…</p>
+        <p className="text-sm text-white/40">Checking local tools…</p>
       </div>
     );
   }
@@ -53,11 +53,11 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center gap-5 px-6 py-10"
+      className="workspace-card flex w-full max-w-md flex-col items-center gap-5 px-8 py-9"
     >
-      <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+      <div className="flex size-12 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10">
         <svg
-          className="w-6 h-6 text-accent"
+          className="size-6 text-blue-400"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -72,10 +72,8 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
       </div>
 
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-sm font-medium text-white/90 light:text-black/90">
-          Missing required tools
-        </p>
-        <p className="text-xs text-white/40 light:text-black/40 max-w-xs">
+        <p className="text-sm font-medium text-white/90">Missing required tools</p>
+        <p className="max-w-xs text-xs text-white/40">
           ConvertKit needs a few CLI tools installed. Run this in Terminal:
         </p>
       </div>
@@ -86,33 +84,24 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
         onClick={handleCopy}
         className="
           w-full max-w-xs px-3 py-2 text-xs font-mono text-left rounded-[var(--radius-button)]
-          bg-white/[0.04] light:bg-black/[0.03]
-          text-white/60 light:text-black/60
-          border border-white/[0.06] light:border-black/[0.06]
-          hover:border-white/[0.14] light:hover:border-black/[0.14]
+          bg-white/[0.04] text-white/60 border border-white/[0.06]
+          hover:border-white/[0.14]
           transition-all duration-200
         "
         title="Click to copy"
       >
         $ {brewCommand}
-        <span className="float-right text-white/20 light:text-black/20">copy</span>
+        <span className="float-right text-white/20">copy</span>
       </button>
 
       {/* Dep status list */}
       <div className="w-full max-w-xs flex flex-col gap-1.5">
         {deps.map((dep) => (
-          <div
-            key={dep.name}
-            className="flex items-center justify-between text-xs px-1"
-          >
-            <span className="text-white/50 light:text-black/50">{dep.name}</span>
+          <div key={dep.name} className="flex items-center justify-between text-xs px-1">
+            <span className="text-white/50">{dep.name}</span>
             <span
               className={
-                dep.installed
-                  ? "text-success"
-                  : dep.required
-                    ? "text-error"
-                    : "text-white/25 light:text-black/25"
+                dep.installed ? "text-success" : dep.required ? "text-error" : "text-white/25"
               }
             >
               {dep.installed ? (dep.version ?? "installed") : dep.required ? "missing" : "optional"}
@@ -128,9 +117,7 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
           onClick={check}
           className="
             flex-1 h-9 rounded-[var(--radius-button)] text-xs font-medium
-            bg-white/[0.06] light:bg-black/[0.05]
-            text-white/60 light:text-black/60
-            hover:bg-white/[0.10] light:hover:bg-black/[0.08]
+            bg-white/[0.06] text-white/60 hover:bg-white/[0.10]
             transition-all duration-200
           "
         >
@@ -141,7 +128,7 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
           onClick={onReady}
           className="
             flex-1 h-9 rounded-[var(--radius-button)] text-xs font-medium
-            bg-accent hover:bg-accent-hover text-white
+            bg-blue-600 hover:bg-blue-500 text-white
             transition-all duration-200
           "
         >

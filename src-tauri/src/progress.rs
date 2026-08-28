@@ -43,12 +43,18 @@ mod tests {
     #[test]
     fn parses_valid_out_time_ms() {
         // 5 000 000 us = 5 000 ms, total = 10 000 ms -> 50%
-        assert_eq!(parse_ffmpeg_progress("out_time_ms=5000000", 10_000), Some(50));
+        assert_eq!(
+            parse_ffmpeg_progress("out_time_ms=5000000", 10_000),
+            Some(50)
+        );
     }
 
     #[test]
     fn clamps_to_100() {
-        assert_eq!(parse_ffmpeg_progress("out_time_ms=99999999999", 10_000), Some(100));
+        assert_eq!(
+            parse_ffmpeg_progress("out_time_ms=99999999999", 10_000),
+            Some(100)
+        );
     }
 
     #[test]

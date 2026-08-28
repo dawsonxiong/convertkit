@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FileInfo, ConversionResult, DependencyStatus } from "../types";
 
+/** Whether the frontend is running inside Tauri rather than a browser preview. */
+export function isTauriRuntime(): boolean {
+  return "__TAURI_INTERNALS__" in window;
+}
+
 /** Start a conversion job. Returns the result on success. */
 export async function convert(
   inputPath: string,
@@ -10,6 +15,23 @@ export async function convert(
   return invoke<ConversionResult>("convert", {
     inputPath,
     outputFormat,
+    jobId,
+  });
+}
+
+/** Resize a raster image while preserving the original file. */
+export async function resizeImage(
+  inputPath: string,
+  width: number,
+  height: number,
+  preserveAspect: boolean,
+  jobId: string,
+): Promise<ConversionResult> {
+  return invoke<ConversionResult>("resize_image", {
+    inputPath,
+    width,
+    height,
+    preserveAspect,
     jobId,
   });
 }

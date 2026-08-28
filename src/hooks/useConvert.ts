@@ -4,23 +4,29 @@ import { useAppStore } from "../store/useAppStore";
 import type { ConversionError } from "../types";
 
 export function useConvert() {
-  const file = useAppStore((s) => s.file);
-  const outputFormat = useAppStore((s) => s.outputFormat);
+  const files = useAppStore((s) => s.files);
+  const outputFormats = useAppStore((s) => s.outputFormats);
   const state = useAppStore((s) => s.state);
   const jobId = useAppStore((s) => s.jobId);
   const startConversion = useAppStore((s) => s.startConversion);
-  const setResult = useAppStore((s) => s.setResult);
+  const setActiveJob = useAppStore((s) => s.setActiveJob);
+  const setResults = useAppStore((s) => s.setResults);
   const setError = useAppStore((s) => s.setError);
 
   const doConvert = useCallback(async () => {
-    if (!file || !outputFormat) return;
+    if (files.length === 0 || files.some((file) => !outputFormats[file.path])) return;
 
-    const id = crypto.randomUUID();
-    startConversion(id);
+    const firstJobId = crypto.randomUUID();
+    startConversion(firstJobId);
 
     try {
-      const result = await convert(file.path, outputFormat, id);
-      setResult(result);
+      const results = [];
+      for (const [index, file] of files.entries()) {
+        const id = index === 0 ? firstJobId : crypto.randomUUID();
+        if (index > 0) setActiveJob(id);
+        results.push(await convert(file.path, outputFormats[file.path], id));
+      }
+      setResults(results);
     } catch (err: unknown) {
       if (typeof err === "object" && err !== null && "kind" in err) {
         setError(err as ConversionError);
@@ -31,7 +37,7 @@ export function useConvert() {
         });
       }
     }
-  }, [file, outputFormat, startConversion, setResult, setError]);
+  }, [files, outputFormats, setActiveJob, setError, setResults, startConversion]);
 
   const cancel = useCallback(async () => {
     if (!jobId) return;

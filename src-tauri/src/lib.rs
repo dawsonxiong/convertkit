@@ -6,7 +6,7 @@ pub mod progress;
 
 use commands::{
     cancel_conversion, check_dependencies, convert, get_file_info, get_opened_file,
-    read_file_thumbnail, reveal_in_finder, save_clipboard_image,
+    read_file_thumbnail, resize_image, reveal_in_finder, save_clipboard_image,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -23,11 +23,7 @@ pub struct OpenedFiles(pub Mutex<Vec<PathBuf>>);
 /// Ensure common tool directories are on PATH so bundled .app can find
 /// Homebrew/Cargo binaries that aren't on the default macOS PATH.
 fn ensure_path() {
-    let extra = [
-        "/opt/homebrew/bin",
-        "/opt/homebrew/sbin",
-        "/usr/local/bin",
-    ];
+    let extra = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"];
 
     let mut path = std::env::var("PATH").unwrap_or_default();
 
@@ -67,6 +63,7 @@ pub fn run() {
         .manage(OpenedFiles(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
             convert,
+            resize_image,
             cancel_conversion,
             check_dependencies,
             get_file_info,

@@ -16,6 +16,7 @@ impl ConversionEngine for PandocEngine {
     fn supports(&self, input: Format, output: Format) -> bool {
         input.category() == FileCategory::Document
             && output.category() == FileCategory::Document
+            && input != Format::Pdf
             && input != output
             // LibreOffice handles DOCX→PDF better; only fall through to Pandoc
             // for other document pairs.
@@ -31,10 +32,13 @@ impl ConversionEngine for PandocEngine {
         let input = &request.input_path;
         let output = &request.output_path;
 
-        let _ = app.emit("conversion-progress", ProgressPayload {
-            percent: -1,
-            stage: "Converting document…".into(),
-        });
+        let _ = app.emit(
+            "conversion-progress",
+            ProgressPayload {
+                percent: -1,
+                stage: "Converting document…".into(),
+            },
+        );
 
         let mut args: Vec<String> = vec![input.to_string_lossy().into()];
 
@@ -52,7 +56,7 @@ impl ConversionEngine for PandocEngine {
 
         let mut child = tool_command("pandoc")
             .args(&args)
-            .stdout(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| ConversionError::ProcessFailed {
@@ -60,6 +64,19 @@ impl ConversionEngine for PandocEngine {
                 stderr: String::new(),
                 exit_code: None,
             })?;
+
+        let stderr = child.stderr.take();
+        let stderr_handle = tokio::spawn(async move {
+            match stderr {
+                Some(mut stderr) => {
+                    use tokio::io::AsyncReadExt;
+                    let mut output = String::new();
+                    let _ = stderr.read_to_string(&mut output).await;
+                    output
+                }
+                None => String::new(),
+            }
+        });
 
         let status = tokio::select! {
             result = child.wait() => {
@@ -76,8 +93,8 @@ impl ConversionEngine for PandocEngine {
             }
         };
 
+        let stderr = stderr_handle.await.unwrap_or_default();
         if !status.success() {
-            let stderr = read_stderr(&mut child).await;
             super::cleanup_partial(output);
             return Err(ConversionError::ProcessFailed {
                 message: "Pandoc conversion failed".into(),
@@ -94,16 +111,3 @@ impl ConversionEngine for PandocEngine {
         })
     }
 }
-
-async fn read_stderr(child: &mut tokio::process::Child) -> String {
-    match child.stderr.take() {
-        Some(mut s) => {
-            use tokio::io::AsyncReadExt;
-            let mut buf = String::new();
-            let _ = s.read_to_string(&mut buf).await;
-            buf
-        }
-        None => String::new(),
-    }
-}
-

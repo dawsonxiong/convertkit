@@ -1,23 +1,26 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useAppStore } from "../store/useAppStore";
-import { FORMAT_INFO } from "../lib/formats";
+import { FORMAT_INFO, getCompatibleFormats } from "../lib/formats";
 import { formatFileSize } from "../lib/fileUtils";
 import { readFileThumbnail } from "../lib/tauri";
+import type { FileInfo } from "../types";
 
 const PREVIEWABLE = new Set(["image", "vector", "document", "video"]);
 
-export function FilePreview() {
-  const file = useAppStore((s) => s.file);
-  const reset = useAppStore((s) => s.reset);
-  const state = useAppStore((s) => s.state);
+interface FilePreviewProps {
+  file: FileInfo;
+  canDismiss?: boolean;
+}
+
+export function FilePreview({ file, canDismiss = false }: FilePreviewProps) {
+  const operation = useAppStore((s) => s.operation);
+  const outputFormat = useAppStore((s) => s.outputFormats[file.path]);
+  const setOutputFormat = useAppStore((s) => s.setOutputFormat);
+  const removeFile = useAppStore((s) => s.removeFile);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!file) {
-      setThumbnail(null);
-      return;
-    }
     const meta = FORMAT_INFO[file.format];
     if (!meta || !PREVIEWABLE.has(meta.category) || file.format === "heic") {
       setThumbnail(null);
@@ -28,61 +31,79 @@ export function FilePreview() {
       .catch(() => setThumbnail(null));
   }, [file]);
 
-  if (!file) return null;
-
   const meta = FORMAT_INFO[file.format];
   const icon = meta?.icon ?? "📁";
   const label = meta?.label ?? file.extension.toUpperCase();
-  const canDismiss = state === "loaded";
+  const compatible = getCompatibleFormats(file.format);
 
   return (
-    <motion.div
-      className="
-        relative flex items-center gap-3 p-3
-        bg-surface-elevated light:bg-surface-elevated-light
-        rounded-[var(--radius-card)]
-        border border-white/[0.06] light:border-black/[0.06]
-      "
-    >
+    <motion.div className="relative flex items-center gap-2.5 border border-[#44464f] bg-[#0e0e10] p-2">
       {/* Thumbnail or icon */}
-      <div className="w-10 h-10 rounded-[var(--radius-button)] bg-white/[0.05] light:bg-black/[0.04] flex items-center justify-center text-lg shrink-0 overflow-hidden">
-        {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          icon
-        )}
+      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden border border-[#44464f] bg-[#2a2a2c] text-base">
+        {thumbnail ? <img src={thumbnail} alt="" className="w-full h-full object-cover" /> : icon}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white/90 light:text-black/90 truncate">
-          {file.name}
-        </p>
-        <p className="text-xs text-white/40 light:text-black/40 mt-0.5">
+        <p className="truncate text-[13px] font-medium text-white/90">{file.name}</p>
+        <p className="mt-1 text-[10px] leading-4 text-white/40">
           {formatFileSize(file.size)}
+          {file.width && file.height
+            ? ` · ${file.width.toLocaleString()} × ${file.height.toLocaleString()} px`
+            : ""}
         </p>
       </div>
 
-      {/* Format badge */}
-      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[var(--radius-pill)] bg-white/[0.06] light:bg-black/[0.05] text-white/50 light:text-black/50">
+      {/* Source format */}
+      <span className="shrink-0 border border-[#44464f] bg-[#201f22] px-1.5 py-1 text-[10px] font-medium text-white/55">
         {label}
       </span>
+
+      {operation === "convert" && (
+        <>
+          <svg
+            className="size-3 shrink-0 text-white/35"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="m9 6 6 6-6 6" />
+          </svg>
+          <div className="relative shrink-0">
+            <select
+              value={outputFormat ?? ""}
+              onChange={(event) => setOutputFormat(event.target.value, file.path)}
+              aria-label={`Output format for ${file.name}`}
+              className="h-7 min-w-16 appearance-none border border-[#44464f] bg-[#0e0e10] pl-2 pr-6 text-[10px] font-medium text-[#e5e1e4] outline-none focus:border-[#b0c6ff]"
+            >
+              {compatible.map((format) => (
+                <option key={format} value={format}>
+                  {FORMAT_INFO[format]?.label ?? format.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <svg
+              className="pointer-events-none absolute right-2 top-1/2 size-2.5 -translate-y-1/2 text-white/40"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="m7 9 5 5 5-5" />
+            </svg>
+          </div>
+        </>
+      )}
 
       {/* Clear button */}
       {canDismiss && (
         <button
           type="button"
-          onClick={reset}
-          className="
-            shrink-0 w-6 h-6 flex items-center justify-center
-            rounded-[var(--radius-pill)] text-white/30 light:text-black/30
-            hover:text-white/60 light:hover:text-black/60
-            hover:bg-white/[0.06] light:hover:bg-black/[0.05]
-          "
+          onClick={() => removeFile(file.path)}
+          className="flex size-7 shrink-0 items-center justify-center text-white/40 hover:bg-white/[0.06] hover:text-white"
           aria-label="Clear file"
         >
           <svg

@@ -11,14 +11,14 @@ export function ProgressBar() {
   return (
     <div className="flex flex-col gap-2">
       {/* Track */}
-      <div className="relative h-2 w-full rounded-full bg-white/[0.06] light:bg-black/[0.06] overflow-hidden">
+      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/[0.065]">
         {isIndeterminate ? (
           <div className="absolute inset-0">
-            <div className="h-full w-1/4 rounded-full bg-accent animate-indeterminate" />
+            <div className="h-full w-1/4 animate-indeterminate rounded-full bg-blue-500" />
           </div>
         ) : (
           <motion.div
-            className="h-full rounded-full bg-accent"
+            className="h-full rounded-full bg-blue-500"
             initial={{ width: 0 }}
             animate={{ width: `${percent}%` }}
             transition={{ duration: 0.3, ease: "easeOut" }}
@@ -28,13 +28,9 @@ export function ProgressBar() {
 
       {/* Label row */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-white/40 light:text-black/40">
-          {stage || "Converting..."}
-        </span>
+        <span className="text-xs text-white/50">{stage || "Working…"}</span>
         {!isIndeterminate && (
-          <span className="text-xs tabular-nums text-white/30 light:text-black/30">
-            {Math.round(percent)}%
-          </span>
+          <span className="text-xs tabular-nums text-white/40">{Math.round(percent)}%</span>
         )}
       </div>
     </div>

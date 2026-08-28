@@ -47,8 +47,9 @@ pub async fn convert(
     }
 
     // File validation
-    let input_meta = std::fs::metadata(&input)
-        .map_err(|e| ConversionError::InputNotFound { path: format!("{}: {}", input_path, e) })?;
+    let input_meta = std::fs::metadata(&input).map_err(|e| ConversionError::InputNotFound {
+        path: format!("{}: {}", input_path, e),
+    })?;
 
     if input_meta.len() == 0 {
         return Err(ConversionError::UnsupportedConversion {
@@ -227,9 +228,7 @@ pub async fn convert(
 /// Fallback output directory: ~/Downloads/ConvertKit/
 fn dirs_downloads_fallback() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home)
-        .join("Downloads")
-        .join("ConvertKit")
+    PathBuf::from(home).join("Downloads").join("ConvertKit")
 }
 
 /// Like [`dedup_output_path`] but places the output in a specific directory.

@@ -1,20 +1,22 @@
 # ConvertKit
 
-A minimal desktop file converter for macOS. Drop a file in, pick an output format, click convert.
+A private, offline file workspace for macOS. Convert media and documents or resize
+images from one focused dark-mode interface.
 
 Built with Tauri v2, React, and Rust.
 
-## Supported Formats
+## Available Tools
 
-| Category | Formats |
-|----------|---------|
-| Image | JPG, PNG, WebP, TIFF, BMP, GIF, ICO, AVIF, HEIC |
-| Video | MP4, MOV, WebM, MKV, AVI |
-| Audio | MP3, WAV, AAC, FLAC, OGG, M4A |
-| Document | PDF, DOCX, HTML, Markdown, EPUB, TXT |
-| Vector | SVG |
+| Tool | Inputs | Outputs |
+|----------|---------|---------|
+| Convert images | JPG, PNG, WebP, TIFF, BMP, GIF, ICO, AVIF, HEIC | Other image formats or SVG |
+| Convert SVG | SVG | Raster image formats |
+| Convert video | MP4, MOV, WebM, MKV, AVI | Video, GIF, or extracted audio |
+| Convert audio | MP3, WAV, AAC, FLAC, OGG, M4A | Other audio formats |
+| Convert documents | DOCX, HTML, Markdown, EPUB, TXT | Supported document formats, including PDF |
+| Resize image | Raster image formats | A resized copy in the original format |
 
-Video files can also be converted to GIF or have audio extracted.
+Some conversions need one of the optional engines below.
 
 ## Requirements
 

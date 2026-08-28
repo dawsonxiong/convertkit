@@ -1,14 +1,11 @@
 import { StrictMode, Component } from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import ReactDOM from "react-dom/client";
-import "@fontsource-variable/inter";
+import "@fontsource-variable/geist";
 import "./styles/globals.css";
 import App from "./App";
 
-class ErrorBoundary extends Component<
-  { children: ReactNode },
-  { error: Error | null }
-> {
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
 
   static getDerivedStateFromError(error: Error) {

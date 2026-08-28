@@ -53,8 +53,15 @@ impl Format {
     /// Which broad category this format belongs to.
     pub fn category(&self) -> FileCategory {
         match self {
-            Self::Jpg | Self::Png | Self::WebP | Self::Tiff | Self::Bmp | Self::Gif
-            | Self::Ico | Self::Avif | Self::Heic => FileCategory::Image,
+            Self::Jpg
+            | Self::Png
+            | Self::WebP
+            | Self::Tiff
+            | Self::Bmp
+            | Self::Gif
+            | Self::Ico
+            | Self::Avif
+            | Self::Heic => FileCategory::Image,
 
             Self::Mp4 | Self::Mov | Self::WebM | Self::Mkv | Self::Avi => FileCategory::Video,
 
@@ -151,27 +158,47 @@ impl Format {
                     Self::Gif,
                     Self::Ico,
                     Self::Avif,
+                    Self::Heic,
                 ];
                 // Remove self from targets
                 targets.retain(|f| f != self);
+                targets.push(Self::Svg);
                 targets
             }
             FileCategory::Video => {
                 let mut targets = vec![
-                    Self::Mp4, Self::Mov, Self::WebM, Self::Mkv, Self::Avi,
+                    Self::Mp4,
+                    Self::Mov,
+                    Self::WebM,
+                    Self::Mkv,
+                    Self::Avi,
                     Self::Gif, // video -> GIF via FFmpeg
-                    Self::Mp3, Self::Wav, Self::Aac, Self::Flac, Self::Ogg, Self::M4a, // audio extraction
+                    Self::Mp3,
+                    Self::Wav,
+                    Self::Aac,
+                    Self::Flac,
+                    Self::Ogg,
+                    Self::M4a, // audio extraction
                 ];
                 targets.retain(|f| f != self);
                 targets
             }
             FileCategory::Audio => {
-                let mut targets =
-                    vec![Self::Mp3, Self::Wav, Self::Aac, Self::Flac, Self::Ogg, Self::M4a];
+                let mut targets = vec![
+                    Self::Mp3,
+                    Self::Wav,
+                    Self::Aac,
+                    Self::Flac,
+                    Self::Ogg,
+                    Self::M4a,
+                ];
                 targets.retain(|f| f != self);
                 targets
             }
             FileCategory::Document => {
+                if *self == Self::Pdf {
+                    return vec![];
+                }
                 let mut targets = vec![
                     Self::Pdf,
                     Self::Docx,
@@ -184,8 +211,18 @@ impl Format {
                 targets
             }
             FileCategory::Vector => {
-                // SVG can go to raster image formats as well as PDF
-                vec![Self::Png, Self::Jpg, Self::WebP, Self::Pdf]
+                // resvg handles PNG; ImageMagick handles the other raster targets.
+                vec![
+                    Self::Png,
+                    Self::Jpg,
+                    Self::WebP,
+                    Self::Tiff,
+                    Self::Bmp,
+                    Self::Gif,
+                    Self::Ico,
+                    Self::Avif,
+                    Self::Heic,
+                ]
             }
         }
     }
@@ -296,7 +333,14 @@ mod tests {
     fn svg_targets_include_raster() {
         let targets = Format::Svg.compatible_targets();
         assert!(targets.contains(&Format::Png));
-        assert!(targets.contains(&Format::Pdf));
+        assert!(targets.contains(&Format::Jpg));
+        assert!(targets.contains(&Format::Heic));
+        assert!(!targets.contains(&Format::Pdf));
+    }
+
+    #[test]
+    fn pdf_has_no_supported_targets() {
+        assert!(Format::Pdf.compatible_targets().is_empty());
     }
 
     #[test]

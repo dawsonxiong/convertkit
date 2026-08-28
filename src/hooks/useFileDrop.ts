@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { getFileInfo } from "../lib/tauri";
+import { getFileInfo, isTauriRuntime } from "../lib/tauri";
 import { useAppStore } from "../store/useAppStore";
-import { isSupportedFile } from "../lib/formats";
+import { isPathSupportedForOperation } from "../lib/operations";
 
 export function useFileDrop() {
   const [isDragging, setIsDragging] = useState(false);
-  const setFile = useAppStore((s) => s.setFile);
+  const addFiles = useAppStore((s) => s.addFiles);
   const setRejection = useAppStore((s) => s.setRejection);
+  const operation = useAppStore((s) => s.operation);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+
     const appWindow = getCurrentWebviewWindow();
     let unlisten: (() => void) | undefined;
 
@@ -23,17 +26,23 @@ export function useFileDrop() {
           setIsDragging(false);
           const paths = event.payload.paths;
           if (paths.length > 0) {
-            const path = paths[0];
-            if (!isSupportedFile(path)) {
-              const ext = path.split(".").pop()?.toLowerCase() ?? "unknown";
-              setRejection(`".${ext}" files are not supported`);
+            const supported = paths.filter((path) => isPathSupportedForOperation(path, operation));
+            if (supported.length === 0) {
+              setRejection(
+                operation === "resize"
+                  ? "Resize works with raster images"
+                  : "Those file types are not supported",
+              );
               return;
             }
             try {
-              const info = await getFileInfo(path);
-              setFile(info);
+              addFiles(await Promise.all(supported.map(getFileInfo)));
+              if (supported.length < paths.length) {
+                setRejection(`${paths.length - supported.length} unsupported file(s) skipped`);
+              }
             } catch (err) {
               console.error("Failed to get file info:", err);
+              setRejection("One or more files could not be opened");
             }
           }
         }
@@ -45,7 +54,7 @@ export function useFileDrop() {
     return () => {
       unlisten?.();
     };
-  }, [setFile, setRejection]);
+  }, [addFiles, operation, setRejection]);
 
   return { isDragging };
 }

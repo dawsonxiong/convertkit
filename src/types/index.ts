@@ -7,6 +7,8 @@ export interface FileInfo {
   size: number;
   category: FileCategory;
   format: string;
+  width: number | null;
+  height: number | null;
 }
 
 export interface ConversionResult {
@@ -41,3 +43,5 @@ export interface DependencyStatus {
 }
 
 export type AppState = "empty" | "loaded" | "converting" | "done" | "error";
+
+export type Operation = "convert" | "resize";

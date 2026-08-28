@@ -5,7 +5,9 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{resolve_tool, tool_command, ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::{
+    resolve_tool, tool_command, ConversionEngine, ConversionRequest, ConversionResult,
+};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::{parse_ffmpeg_progress, ProgressPayload};
@@ -49,34 +51,40 @@ impl ConversionEngine for FfmpegEngine {
         // Check if we can do a codec-copy (container swap, instant).
         let codec_copy = can_copy_streams(input, request.output_format).await;
 
-        let mut args: Vec<String> = vec![
-            "-i".into(),
-            input.to_string_lossy().into(),
-        ];
+        let mut args: Vec<String> = vec!["-i".into(), input.to_string_lossy().into()];
 
         if codec_copy {
-            let _ = app.emit("conversion-progress", ProgressPayload {
-                percent: -1,
-                stage: "Remuxing (no re-encode)…".into(),
-            });
+            let _ = app.emit(
+                "conversion-progress",
+                ProgressPayload {
+                    percent: -1,
+                    stage: "Remuxing (no re-encode)…".into(),
+                },
+            );
             args.extend(["-c".into(), "copy".into()]);
         } else if request.output_format.category() == FileCategory::Audio
             || request.input_format.category() == FileCategory::Video
                 && request.output_format.category() == FileCategory::Audio
         {
             // Audio-only output.
-            let _ = app.emit("conversion-progress", ProgressPayload {
-                percent: if duration_ms > 0 { 0 } else { -1 },
-                stage: "Extracting audio…".into(),
-            });
+            let _ = app.emit(
+                "conversion-progress",
+                ProgressPayload {
+                    percent: if duration_ms > 0 { 0 } else { -1 },
+                    stage: "Extracting audio…".into(),
+                },
+            );
             args.push("-vn".into()); // strip video
             args.extend(audio_codec_args(request.output_format));
         } else {
             // Full video re-encode.
-            let _ = app.emit("conversion-progress", ProgressPayload {
-                percent: if duration_ms > 0 { 0 } else { -1 },
-                stage: "Encoding…".into(),
-            });
+            let _ = app.emit(
+                "conversion-progress",
+                ProgressPayload {
+                    percent: if duration_ms > 0 { 0 } else { -1 },
+                    stage: "Encoding…".into(),
+                },
+            );
             args.extend(video_codec_args(request.output_format));
         }
 
@@ -110,10 +118,13 @@ impl ConversionEngine for FfmpegEngine {
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(pct) = parse_ffmpeg_progress(&line, duration_ms) {
-                        let _ = app2.emit("conversion-progress", ProgressPayload {
-                            percent: pct,
-                            stage: "Encoding…".into(),
-                        });
+                        let _ = app2.emit(
+                            "conversion-progress",
+                            ProgressPayload {
+                                percent: pct,
+                                stage: "Encoding…".into(),
+                            },
+                        );
                     }
                 }
             }
@@ -180,10 +191,13 @@ async fn convert_to_gif(
     app: &AppHandle,
     cancel_token: CancellationToken,
 ) -> Result<ConversionResult, ConversionError> {
-    let _ = app.emit("conversion-progress", ProgressPayload {
-        percent: -1,
-        stage: "Generating palette…".into(),
-    });
+    let _ = app.emit(
+        "conversion-progress",
+        ProgressPayload {
+            percent: -1,
+            stage: "Generating palette…".into(),
+        },
+    );
 
     let tmp = tempfile::tempdir().map_err(|e| ConversionError::ProcessFailed {
         message: format!("Failed to create temp dir: {e}"),
@@ -195,12 +209,16 @@ async fn convert_to_gif(
     // Pass 1: generate palette.
     let status = run_ffmpeg_simple(
         &[
-            "-i", &input.to_string_lossy(),
-            "-vf", "fps=15,scale=480:-1:flags=lanczos,palettegen",
-            "-y", &palette.to_string_lossy(),
+            "-i",
+            &input.to_string_lossy(),
+            "-vf",
+            "fps=15,scale=480:-1:flags=lanczos,palettegen",
+            "-y",
+            &palette.to_string_lossy(),
         ],
         &cancel_token,
-    ).await?;
+    )
+    .await?;
 
     if !status.success() {
         return Err(ConversionError::ProcessFailed {
@@ -210,24 +228,30 @@ async fn convert_to_gif(
         });
     }
 
-    let _ = app.emit("conversion-progress", ProgressPayload {
-        percent: 50,
-        stage: "Encoding GIF…".into(),
-    });
+    let _ = app.emit(
+        "conversion-progress",
+        ProgressPayload {
+            percent: 50,
+            stage: "Encoding GIF…".into(),
+        },
+    );
 
     // Pass 2: encode with palette.
-    let filter = format!(
-        "fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse"
-    );
+    let filter = format!("fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse");
     let status = run_ffmpeg_simple(
         &[
-            "-i", &input.to_string_lossy(),
-            "-i", &palette.to_string_lossy(),
-            "-lavfi", &filter,
-            "-y", &output.to_string_lossy(),
+            "-i",
+            &input.to_string_lossy(),
+            "-i",
+            &palette.to_string_lossy(),
+            "-lavfi",
+            &filter,
+            "-y",
+            &output.to_string_lossy(),
         ],
         &cancel_token,
-    ).await?;
+    )
+    .await?;
 
     if !status.success() {
         super::cleanup_partial(output);
@@ -254,9 +278,12 @@ async fn convert_to_gif(
 async fn probe_duration_ms(path: &Path) -> Option<u64> {
     let output = tool_command("ffprobe")
         .args([
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
         ])
         .arg(path)
         .output()
@@ -272,9 +299,12 @@ async fn probe_duration_ms(path: &Path) -> Option<u64> {
 async fn can_copy_streams(path: &Path, target: Format) -> bool {
     let output = match tool_command("ffprobe")
         .args([
-            "-v", "quiet",
-            "-show_entries", "stream=codec_name",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "stream=codec_name",
+            "-of",
+            "csv=p=0",
         ])
         .arg(path)
         .output()
@@ -308,33 +338,52 @@ async fn can_copy_streams(path: &Path, target: Format) -> bool {
 fn video_codec_args(format: Format) -> Vec<String> {
     match format {
         Format::Mp4 => vec![
-            "-c:v".into(), "libx264".into(),
-            "-crf".into(), "23".into(),
-            "-preset".into(), "medium".into(),
-            "-c:a".into(), "aac".into(),
+            "-c:v".into(),
+            "libx264".into(),
+            "-crf".into(),
+            "23".into(),
+            "-preset".into(),
+            "medium".into(),
+            "-c:a".into(),
+            "aac".into(),
         ],
         Format::WebM => vec![
-            "-c:v".into(), "libvpx-vp9".into(),
-            "-crf".into(), "31".into(),
-            "-b:v".into(), "0".into(),
-            "-c:a".into(), "libopus".into(),
+            "-c:v".into(),
+            "libvpx-vp9".into(),
+            "-crf".into(),
+            "31".into(),
+            "-b:v".into(),
+            "0".into(),
+            "-c:a".into(),
+            "libopus".into(),
         ],
         Format::Mov => vec![
-            "-c:v".into(), "libx264".into(),
-            "-crf".into(), "23".into(),
-            "-preset".into(), "medium".into(),
-            "-c:a".into(), "aac".into(),
+            "-c:v".into(),
+            "libx264".into(),
+            "-crf".into(),
+            "23".into(),
+            "-preset".into(),
+            "medium".into(),
+            "-c:a".into(),
+            "aac".into(),
         ],
         Format::Mkv => vec![
-            "-c:v".into(), "libx264".into(),
-            "-crf".into(), "23".into(),
-            "-preset".into(), "medium".into(),
-            "-c:a".into(), "aac".into(),
+            "-c:v".into(),
+            "libx264".into(),
+            "-crf".into(),
+            "23".into(),
+            "-preset".into(),
+            "medium".into(),
+            "-c:a".into(),
+            "aac".into(),
         ],
         Format::Avi => vec![
-            "-c:v".into(), "libx264".into(),
-            "-crf".into(), "23".into(),
-            "-c:a".into(), "mp3".into(),
+            "-c:v".into(),
+            "libx264".into(),
+            "-crf".into(),
+            "23".into(),
+            "-c:a".into(),
+            "mp3".into(),
         ],
         _ => vec![],
     }
@@ -343,27 +392,21 @@ fn video_codec_args(format: Format) -> Vec<String> {
 fn audio_codec_args(format: Format) -> Vec<String> {
     match format {
         Format::Mp3 => vec![
-            "-codec:a".into(), "libmp3lame".into(),
-            "-qscale:a".into(), "2".into(),
+            "-codec:a".into(),
+            "libmp3lame".into(),
+            "-qscale:a".into(),
+            "2".into(),
         ],
-        Format::Wav => vec![
-            "-c:a".into(), "pcm_s16le".into(),
-        ],
-        Format::Aac => vec![
-            "-c:a".into(), "aac".into(),
-            "-b:a".into(), "192k".into(),
-        ],
-        Format::Flac => vec![
-            "-c:a".into(), "flac".into(),
-        ],
+        Format::Wav => vec!["-c:a".into(), "pcm_s16le".into()],
+        Format::Aac => vec!["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()],
+        Format::Flac => vec!["-c:a".into(), "flac".into()],
         Format::Ogg => vec![
-            "-c:a".into(), "libvorbis".into(),
-            "-qscale:a".into(), "5".into(),
+            "-c:a".into(),
+            "libvorbis".into(),
+            "-qscale:a".into(),
+            "5".into(),
         ],
-        Format::M4a => vec![
-            "-c:a".into(), "aac".into(),
-            "-b:a".into(), "192k".into(),
-        ],
+        Format::M4a => vec!["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()],
         _ => vec![],
     }
 }
@@ -387,7 +430,20 @@ async fn run_ffmpeg_simple(
             exit_code: None,
         })?;
 
-    tokio::select! {
+    let stderr = child.stderr.take();
+    let stderr_handle = tokio::spawn(async move {
+        match stderr {
+            Some(mut stderr) => {
+                use tokio::io::AsyncReadExt;
+                let mut output = String::new();
+                let _ = stderr.read_to_string(&mut output).await;
+                output
+            }
+            None => String::new(),
+        }
+    });
+
+    let result = tokio::select! {
         result = child.wait() => {
             result.map_err(|e| ConversionError::ProcessFailed {
                 message: format!("ffmpeg error: {e}"),
@@ -399,18 +455,7 @@ async fn run_ffmpeg_simple(
             let _ = child.kill().await;
             Err(ConversionError::Cancelled)
         }
-    }
+    };
+    let _ = stderr_handle.await;
+    result
 }
-
-async fn read_stderr(child: &mut tokio::process::Child) -> String {
-    match child.stderr.take() {
-        Some(mut s) => {
-            use tokio::io::AsyncReadExt;
-            let mut buf = String::new();
-            let _ = s.read_to_string(&mut buf).await;
-            buf
-        }
-        None => String::new(),
-    }
-}
-

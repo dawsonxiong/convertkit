@@ -1,39 +1,139 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #191919;
-  --color-surface-light: #fafafa;
-  --color-surface-elevated: #232323;
-  --color-surface-elevated-light: #ffffff;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-success: #22c55e;
-  --color-error: #ef4444;
-  --font-sans: "Inter Variable", "SF Pro", system-ui, sans-serif;
+  --color-surface: #131315;
+  --color-surface-elevated: #201f22;
+  --color-accent: #b0c6ff;
+  --color-accent-hover: #d9e2ff;
+  --color-success: #34d399;
+  --color-error: #f87171;
+  --font-sans: "Geist Variable", "SF Pro Text", system-ui, sans-serif;
+  --text-xs: 0.65625rem;
+  --text-xs--line-height: 0.9375rem;
+  --text-sm: 0.75rem;
+  --text-sm--line-height: 1rem;
+  --text-base: 0.8125rem;
+  --text-base--line-height: 1.125rem;
+  --text-lg: 0.9375rem;
+  --text-lg--line-height: 1.25rem;
   --radius-card: 12px;
   --radius-button: 8px;
   --radius-pill: 6px;
 }
 
-/* ── Base ─────────────────────────────────────────────────── */
-
-body {
-  overflow: hidden;
+:root {
+  color-scheme: dark;
   font-family: var(--font-sans);
-  background-color: var(--color-surface);
-  color: #e5e5e5;
+  background: var(--color-surface);
+  color: #f4f4f5;
+  font-synthesis: none;
+  letter-spacing: -0.006em;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: light) {
-  body {
-    background-color: var(--color-surface-light);
-    color: #1a1a1a;
-  }
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
-/* ── Scrollbar ────────────────────────────────────────────── */
+body {
+  background: var(--color-surface);
+}
+
+button,
+input {
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 0 !important;
+}
+
+.app-background {
+  background: #131315;
+}
+
+.workspace-card {
+  border: 1px solid #3b3d46;
+  border-radius: 0;
+  background: #1b1b1d;
+  box-shadow: none;
+}
+
+.drop-grid {
+  background-color: #0e0e10;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='2' cy='2' r='1' fill='%2344464f' fill-opacity='.22'/%3E%3C/svg%3E");
+  background-size: 24px 24px;
+}
+
+.dimension-input {
+  width: 100%;
+  height: 36px;
+  appearance: textfield;
+  border: 1px solid #44464f;
+  border-radius: 0;
+  background: #0e0e10;
+  padding: 0 30px 0 10px;
+  color: rgb(255 255 255 / 82%);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.dimension-input::-webkit-outer-spin-button,
+.dimension-input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.dimension-input:hover {
+  border-color: rgb(255 255 255 / 13%);
+  background: #14171c;
+}
+
+.dimension-input:focus {
+  border-color: #b0c6ff;
+  box-shadow: none;
+}
+
+.primary-button,
+.secondary-button {
+  height: 40px;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 180ms ease;
+}
+
+.primary-button {
+  border: 1px solid #b0c6ff;
+  background: #b0c6ff;
+  color: #001944;
+}
+
+.primary-button:hover {
+  border-color: #d9e2ff;
+  background: #d9e2ff;
+}
+
+.secondary-button {
+  border: 1px solid #44464f;
+  background: #201f22;
+  color: #c5c6d0;
+}
+
+.secondary-button:hover {
+  background: #2a2a2c;
+  color: white;
+}
 
 * {
   scrollbar-width: none;
@@ -43,29 +143,29 @@ body {
   display: none;
 }
 
-/* ── Drag region cursor ───────────────────────────────────── */
-
-[data-tauri-drag-region] {
-  cursor: default;
-  -webkit-app-region: drag;
+.queue-scroll {
+  overscroll-behavior: contain;
+  scrollbar-color: #4b4d56 transparent;
+  scrollbar-width: thin;
 }
 
-[data-tauri-drag-region] button,
-[data-tauri-drag-region] a,
-[data-tauri-drag-region] input {
-  -webkit-app-region: no-drag;
+.queue-scroll::-webkit-scrollbar {
+  display: block;
+  width: 6px;
 }
 
-/* ── Transitions ──────────────────────────────────────────── */
-
-button,
-a,
-input,
-[role="button"] {
-  transition: all 200ms ease;
+.queue-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* ── Progress bar indeterminate ───────────────────────────── */
+.queue-scroll::-webkit-scrollbar-thumb {
+  border: 1px solid #131315;
+  background: #4b4d56;
+}
+
+.queue-scroll::-webkit-scrollbar-thumb:hover {
+  background: #696b75;
+}
 
 @keyframes indeterminate {
   0% {
@@ -77,20 +177,26 @@ input,
 }
 
 .animate-indeterminate {
-  animation: indeterminate 1.4s ease-in-out infinite;
+  animation: indeterminate 1.35s ease-in-out infinite;
 }
-
-/* ── Focus ────────────────────────────────────────────────── */
 
 *:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid rgb(59 130 246 / 75%);
   outline-offset: 2px;
-  border-radius: var(--radius-pill);
 }
 
-/* ── Selection ────────────────────────────────────────────── */
-
 ::selection {
-  background-color: var(--color-accent);
+  background: rgb(37 99 235 / 70%);
   color: white;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
