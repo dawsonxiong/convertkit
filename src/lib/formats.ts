@@ -4,46 +4,45 @@ export interface FormatMeta {
   extension: string;
   label: string;
   category: FileCategory;
-  icon: string;
 }
 
 export const FORMAT_INFO: Record<string, FormatMeta> = {
   // ── Image ───────────────────────────────────────────────
-  jpg: { extension: "jpg", label: "JPEG", category: "image", icon: "🖼" },
-  png: { extension: "png", label: "PNG", category: "image", icon: "🖼" },
-  webp: { extension: "webp", label: "WebP", category: "image", icon: "🖼" },
-  tiff: { extension: "tiff", label: "TIFF", category: "image", icon: "🖼" },
-  bmp: { extension: "bmp", label: "BMP", category: "image", icon: "🖼" },
-  gif: { extension: "gif", label: "GIF", category: "image", icon: "🖼" },
-  ico: { extension: "ico", label: "ICO", category: "image", icon: "🖼" },
-  avif: { extension: "avif", label: "AVIF", category: "image", icon: "🖼" },
-  heic: { extension: "heic", label: "HEIC", category: "image", icon: "🖼" },
+  jpg: { extension: "jpg", label: "JPEG", category: "image" },
+  png: { extension: "png", label: "PNG", category: "image" },
+  webp: { extension: "webp", label: "WebP", category: "image" },
+  tiff: { extension: "tiff", label: "TIFF", category: "image" },
+  bmp: { extension: "bmp", label: "BMP", category: "image" },
+  gif: { extension: "gif", label: "GIF", category: "image" },
+  ico: { extension: "ico", label: "ICO", category: "image" },
+  avif: { extension: "avif", label: "AVIF", category: "image" },
+  heic: { extension: "heic", label: "HEIC", category: "image" },
 
   // ── Video ───────────────────────────────────────────────
-  mp4: { extension: "mp4", label: "MP4", category: "video", icon: "🎬" },
-  mov: { extension: "mov", label: "MOV", category: "video", icon: "🎬" },
-  webm: { extension: "webm", label: "WebM", category: "video", icon: "🎬" },
-  mkv: { extension: "mkv", label: "MKV", category: "video", icon: "🎬" },
-  avi: { extension: "avi", label: "AVI", category: "video", icon: "🎬" },
+  mp4: { extension: "mp4", label: "MP4", category: "video" },
+  mov: { extension: "mov", label: "MOV", category: "video" },
+  webm: { extension: "webm", label: "WebM", category: "video" },
+  mkv: { extension: "mkv", label: "MKV", category: "video" },
+  avi: { extension: "avi", label: "AVI", category: "video" },
 
   // ── Audio ───────────────────────────────────────────────
-  mp3: { extension: "mp3", label: "MP3", category: "audio", icon: "🎵" },
-  wav: { extension: "wav", label: "WAV", category: "audio", icon: "🎵" },
-  aac: { extension: "aac", label: "AAC", category: "audio", icon: "🎵" },
-  flac: { extension: "flac", label: "FLAC", category: "audio", icon: "🎵" },
-  ogg: { extension: "ogg", label: "OGG", category: "audio", icon: "🎵" },
-  m4a: { extension: "m4a", label: "M4A", category: "audio", icon: "🎵" },
+  mp3: { extension: "mp3", label: "MP3", category: "audio" },
+  wav: { extension: "wav", label: "WAV", category: "audio" },
+  aac: { extension: "aac", label: "AAC", category: "audio" },
+  flac: { extension: "flac", label: "FLAC", category: "audio" },
+  ogg: { extension: "ogg", label: "OGG", category: "audio" },
+  m4a: { extension: "m4a", label: "M4A", category: "audio" },
 
   // ── Document ────────────────────────────────────────────
-  pdf: { extension: "pdf", label: "PDF", category: "document", icon: "📄" },
-  docx: { extension: "docx", label: "DOCX", category: "document", icon: "📄" },
-  html: { extension: "html", label: "HTML", category: "document", icon: "📄" },
-  md: { extension: "md", label: "Markdown", category: "document", icon: "📄" },
-  epub: { extension: "epub", label: "EPUB", category: "document", icon: "📄" },
-  txt: { extension: "txt", label: "TXT", category: "document", icon: "📄" },
+  pdf: { extension: "pdf", label: "PDF", category: "document" },
+  docx: { extension: "docx", label: "DOCX", category: "document" },
+  html: { extension: "html", label: "HTML", category: "document" },
+  md: { extension: "md", label: "Markdown", category: "document" },
+  epub: { extension: "epub", label: "EPUB", category: "document" },
+  txt: { extension: "txt", label: "TXT", category: "document" },
 
   // ── Vector ──────────────────────────────────────────────
-  svg: { extension: "svg", label: "SVG", category: "vector", icon: "✏️" },
+  svg: { extension: "svg", label: "SVG", category: "vector" },
 };
 
 /* ── Conversion compatibility matrix ──────────────────────── */

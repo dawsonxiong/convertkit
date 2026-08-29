@@ -19,6 +19,8 @@
   --radius-card: 12px;
   --radius-button: 8px;
   --radius-pill: 6px;
+  --default-transition-duration: 140ms;
+  --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root {
@@ -131,7 +133,6 @@ button {
   border-radius: 0;
   font-size: 13px;
   font-weight: 500;
-  transition: all 180ms ease;
 }
 
 .primary-button {
@@ -198,12 +199,17 @@ button {
 }
 
 .animate-indeterminate {
-  animation: indeterminate 1.35s ease-in-out infinite;
+  animation: indeterminate 1.1s linear infinite;
 }
 
-*:focus-visible {
-  outline: 2px solid rgb(59 130 246 / 75%);
-  outline-offset: 2px;
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 1px solid #b0c6ff;
+  outline-offset: -1px;
 }
 
 ::selection {

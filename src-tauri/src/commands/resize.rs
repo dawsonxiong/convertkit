@@ -12,6 +12,8 @@ use crate::formats::FileCategory;
 use crate::progress::ProgressPayload;
 use crate::ActiveJobs;
 
+use super::output::{prepare_output, OutputOptions};
+
 const MAX_DIMENSION: u32 = 32_768;
 
 #[tauri::command]
@@ -22,6 +24,7 @@ pub async fn resize_image(
     height: u32,
     preserve_aspect: bool,
     job_id: Option<String>,
+    output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let input = PathBuf::from(&input_path);
     if !input.is_file() {
@@ -46,7 +49,8 @@ pub async fn resize_image(
         });
     }
 
-    let output = resized_output_path(&input);
+    let extension = format.extension();
+    let prepared_output = prepare_output(&input, extension, "-resized", output_options)?;
     let job_id = job_id.unwrap_or_else(|| Uuid::new_v4().to_string());
     let cancel_token = CancellationToken::new();
     {
@@ -72,7 +76,7 @@ pub async fn resize_image(
     let started = Instant::now();
     let result = run_resize(
         &input,
-        &output,
+        prepared_output.working_path(),
         width,
         height,
         preserve_aspect,
@@ -86,7 +90,8 @@ pub async fn resize_image(
         .remove(&job_id);
 
     match result {
-        Ok(mut result) => {
+        Ok(result) => {
+            let mut result = prepared_output.commit(result)?;
             result.duration_ms = started.elapsed().as_millis() as u64;
             let _ = app.emit(
                 "conversion-progress",
@@ -179,29 +184,6 @@ fn resize_geometry(width: u32, height: u32, preserve_aspect: bool) -> String {
     format!("{width}x{height}{}", if preserve_aspect { "" } else { "!" })
 }
 
-fn resized_output_path(input: &Path) -> PathBuf {
-    let directory = input.parent().unwrap_or_else(|| Path::new("."));
-    let stem = input
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("image");
-    let extension = input
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("png");
-    let base = directory.join(format!("{stem} (resized).{extension}"));
-    if !base.exists() {
-        return base;
-    }
-    for index in 1u32.. {
-        let candidate = directory.join(format!("{stem} (resized {index}).{extension}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,23 +200,5 @@ mod tests {
     fn builds_locked_and_unlocked_geometry() {
         assert_eq!(resize_geometry(800, 600, true), "800x600");
         assert_eq!(resize_geometry(800, 600, false), "800x600!");
-    }
-
-    #[test]
-    fn creates_collision_safe_output_names() {
-        let directory = tempfile::tempdir().expect("temp directory");
-        let input = directory.path().join("photo.png");
-        std::fs::write(&input, b"input").expect("fixture");
-
-        assert_eq!(
-            resized_output_path(&input),
-            directory.path().join("photo (resized).png")
-        );
-
-        std::fs::write(directory.path().join("photo (resized).png"), b"existing").expect("fixture");
-        assert_eq!(
-            resized_output_path(&input),
-            directory.path().join("photo (resized 1).png")
-        );
     }
 }

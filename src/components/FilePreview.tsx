@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { useAppStore } from "../store/useAppStore";
 import { FORMAT_INFO, getCompatibleFormats } from "../lib/formats";
 import { formatFileSize } from "../lib/fileUtils";
@@ -32,18 +31,30 @@ export function FilePreview({
   const [thumbnail, setThumbnail] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const meta = FORMAT_INFO[file.format];
+
+    setThumbnail(null);
     if (!meta || !PREVIEWABLE.has(meta.category) || file.format === "heic") {
-      setThumbnail(null);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
+
     readFileThumbnail(file.path)
-      .then(setThumbnail)
-      .catch(() => setThumbnail(null));
-  }, [file]);
+      .then((result) => {
+        if (!cancelled) setThumbnail(result);
+      })
+      .catch(() => {
+        if (!cancelled) setThumbnail(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file.format, file.path]);
 
   const meta = FORMAT_INFO[file.format];
-  const icon = meta?.icon ?? "📁";
   const label = meta?.label ?? file.extension.toUpperCase();
   const compatible = getCompatibleFormats(file.format);
   const status = queueItem?.status ?? "pending";
@@ -56,10 +67,10 @@ export function FilePreview({
       : null;
 
   return (
-    <motion.div className="relative flex items-center gap-2.5 border border-[#44464f] bg-[#0e0e10] p-2">
-      {/* Thumbnail or icon */}
-      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden border border-[#44464f] bg-[#2a2a2c] text-base">
-        {thumbnail ? <img src={thumbnail} alt="" className="w-full h-full object-cover" /> : icon}
+    <div className="relative flex items-center gap-2.5 border border-[#44464f] bg-[#0e0e10] p-2">
+      {/* Thumbnail or neutral placeholder */}
+      <div className="size-9 shrink-0 overflow-hidden border border-[#44464f] bg-[#1a1a1d]">
+        {thumbnail && <img src={thumbnail} alt="" className="size-full object-cover" />}
       </div>
 
       {/* Info */}
@@ -162,21 +173,22 @@ export function FilePreview({
       {status === "completed" && queueItem?.result && (
         <button
           type="button"
-          onClick={() => revealInFinder(queueItem.result?.output_path ?? "")}
-          className="flex size-7 shrink-0 items-center justify-center text-emerald-300 hover:bg-white/[0.06]"
+          onClick={() => void revealInFinder(queueItem.result?.output_path ?? "")}
+          className="flex h-7 shrink-0 items-center gap-1.5 border border-[#44464f] px-2 text-[10px] font-medium text-white/60 hover:border-[#696b75] hover:bg-white/[0.04] hover:text-white"
           aria-label={`Reveal output for ${file.name}`}
-          title="Reveal output"
+          title="Reveal in Finder"
         >
           <svg
-            className="size-3.5"
+            className="size-3"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
             aria-hidden="true"
           >
-            <path d="m5 13 4 4L19 7" />
+            <path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
           </svg>
+          Reveal
         </button>
       )}
 
@@ -230,10 +242,13 @@ export function FilePreview({
           {progress < 0 ? (
             <div className="h-full w-1/4 animate-indeterminate bg-[#b0c6ff]" />
           ) : (
-            <div className="h-full bg-[#b0c6ff]" style={{ width: `${progress}%` }} />
+            <div
+              className="h-full bg-[#b0c6ff] transition-[width] duration-150 ease-out"
+              style={{ width: `${progress}%` }}
+            />
           )}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

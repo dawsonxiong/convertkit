@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
@@ -29,7 +27,12 @@ impl ConversionEngine for LibreOfficeEngine {
     ) -> Result<ConversionResult, ConversionError> {
         let input = &request.input_path;
         let output = &request.output_path;
-        let out_dir = output.parent().unwrap_or(Path::new("."));
+        let workspace = tempfile::tempdir().map_err(|error| ConversionError::ProcessFailed {
+            message: format!("Could not create a LibreOffice workspace: {error}"),
+            stderr: String::new(),
+            exit_code: None,
+        })?;
+        let out_dir = workspace.path();
 
         let _ = app.emit(
             "conversion-progress",
@@ -108,9 +111,8 @@ impl ConversionEngine for LibreOfficeEngine {
             });
         }
 
-        // LibreOffice writes to outdir with the same stem but new extension.
-        // However, the naming can be unpredictable (e.g. spaces replaced, etc.),
-        // so search for any file matching {stem}.{convert_to} in the output dir.
+        // LibreOffice controls its own filename, so isolate it in a temporary
+        // directory and only move the verified result to the requested path.
         let stem = input
             .file_stem()
             .unwrap_or_default()
@@ -134,14 +136,23 @@ impl ConversionEngine for LibreOfficeEngine {
                     ext_matches && fname.starts_with(&stem)
                 })
             })
-            .unwrap_or_else(|| {
-                // Fall back to the original predictable name.
-                out_dir.join(format!("{}.{}", stem, convert_to))
-            });
+            .unwrap_or_else(|| out_dir.join(format!("{}.{}", stem, convert_to)));
 
-        if lo_output != *output && lo_output.exists() {
-            std::fs::rename(&lo_output, output).map_err(|_| ConversionError::OutputMissing)?;
+        if !lo_output.is_file() {
+            return Err(ConversionError::OutputMissing);
         }
+
+        std::fs::rename(&lo_output, output)
+            .or_else(|_| {
+                std::fs::copy(&lo_output, output)
+                    .map(|_| ())
+                    .map_err(|_| std::io::Error::other("Could not save LibreOffice output"))
+            })
+            .map_err(|error| ConversionError::ProcessFailed {
+                message: format!("Could not save LibreOffice output: {error}"),
+                stderr: String::new(),
+                exit_code: None,
+            })?;
 
         let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
         Ok(ConversionResult {

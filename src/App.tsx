@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DropZone } from "./components/DropZone";
@@ -230,18 +229,11 @@ export default function App() {
           </div>
         </main>
 
-        <AnimatePresence>
-          {rejectionMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-lg border border-red-400/20 bg-[#2a171a] px-3 py-2 text-xs text-red-200 shadow-lg"
-            >
-              {rejectionMessage}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {rejectionMessage && (
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-lg border border-red-400/20 bg-[#2a171a] px-3 py-2 text-xs text-red-200 shadow-lg">
+            {rejectionMessage}
+          </div>
+        )}
       </section>
     </div>
   );

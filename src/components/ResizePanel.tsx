@@ -78,7 +78,7 @@ export function ResizePanel() {
           type="button"
           onClick={toggleAspect}
           aria-pressed={preserveAspect}
-          className={`flex h-7 items-center gap-1.5 whitespace-nowrap border px-2 text-[10px] font-medium transition-colors ${
+          className={`flex h-7 items-center gap-1.5 whitespace-nowrap border px-2 text-[10px] font-medium ${
             preserveAspect
               ? "border-[#6f7fa7] bg-[#20283a] text-[#b0c6ff]"
               : "border-[#44464f] bg-[#0e0e10] text-[#92939d] hover:text-[#e5e1e4]"
@@ -113,7 +113,7 @@ export function ResizePanel() {
               key={percent}
               type="button"
               onClick={() => applyScale(percent)}
-              className={`h-7 border text-[10px] font-medium transition-colors ${
+              className={`h-7 border text-[10px] font-medium ${
                 activeScale === percent
                   ? "border-[#b0c6ff] bg-[#20283a] text-[#b0c6ff]"
                   : "border-[#44464f] bg-[#0e0e10] text-[#92939d] hover:border-[#696b75] hover:text-[#e5e1e4]"

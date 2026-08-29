@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { useConvert } from "../hooks/useConvert";
 import { useOptimize } from "../hooks/useOptimize";
 import { useResize } from "../hooks/useResize";
@@ -18,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   Cancelled: "The operation was cancelled.",
   Timeout: "The operation timed out.",
   OutputMissing: "The output file was not created.",
+  OutputConflict: "Choose a different output folder, suffix, or existing-file policy.",
   DiskFull: "There is not enough disk space.",
 };
 
@@ -66,12 +66,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
         : `${Math.round(Math.abs(difference))}% ${difference > 0 ? "smaller" : "larger"}`;
 
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
-        className="flex flex-col items-center py-3 text-center"
-      >
+      <div className="flex flex-col items-center py-3 text-center">
         <div className="grid size-11 place-items-center rounded-full bg-emerald-500/15">
           <svg
             className="size-6 text-emerald-300"
@@ -109,7 +104,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
                 : "Convert another"}
           </button>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
@@ -124,12 +119,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
     const detail = rawDetail.length > 220 ? `${rawDetail.slice(0, 220)}…` : rawDetail;
 
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
-        className="flex flex-col items-center py-3 text-center"
-      >
+      <div className="flex flex-col items-center py-3 text-center">
         <div className="grid size-11 place-items-center rounded-full bg-red-500/15">
           <svg
             className="size-5 text-red-300"
@@ -171,7 +161,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
             Start over
           </button>
         </div>
-      </motion.div>
+      </div>
     );
   }
 

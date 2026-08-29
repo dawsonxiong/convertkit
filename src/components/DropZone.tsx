@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getFileInfo } from "../lib/tauri";
 import {
@@ -56,7 +55,7 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
   }, [addFiles, operation, setRejection]);
 
   return (
-    <motion.button
+    <button
       type="button"
       onClick={handleClick}
       disabled={disabled}
@@ -81,16 +80,16 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
       </svg>
 
       <span className="mt-5 text-xl font-semibold text-[#e5e1e4]">
-        {isDragging ? "Release to add file" : meta.dropLabel}
+        {isDragging ? "Release to add files" : meta.dropLabel}
       </span>
       <span className="mt-2 max-w-64 text-sm leading-relaxed text-[#92939d]">
         {operation !== "convert"
           ? "PNG, JPEG, WebP, GIF, HEIC, TIFF, BMP, and AVIF."
           : "Images, video, audio, and documents."}
       </span>
-      <span className="mt-5 flex h-8 items-center border border-[#44464f] bg-[#201f22] px-4 text-[11px] font-medium text-[#e5e1e4] transition-colors group-hover:bg-[#2a2a2c]">
+      <span className="mt-5 flex h-8 items-center border border-[#44464f] bg-[#201f22] px-4 text-[11px] font-medium text-[#e5e1e4] group-hover:bg-[#2a2a2c]">
         Browse files
       </span>
-    </motion.button>
+    </button>
   );
 }

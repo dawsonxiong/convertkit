@@ -88,7 +88,7 @@ export function ToolNav({ operation, disabled, onChange }: ToolNavProps) {
               disabled={disabled}
               onClick={() => onChange(value)}
               aria-current={active ? "page" : undefined}
-              className={`group flex h-7 items-center gap-1.5 px-2 text-left text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`group flex h-7 items-center gap-1.5 px-2 text-left text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                 active
                   ? "bg-[#353437] text-[#b0c6ff]"
                   : "text-[#a9a9b2] hover:bg-[#201f22] hover:text-[#e5e1e4]"

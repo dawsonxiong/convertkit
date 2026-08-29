@@ -164,13 +164,23 @@ pub async fn save_clipboard_image(data: String, mime: String) -> Result<String, 
 /// Open Finder with the given file selected.
 #[tauri::command]
 pub async fn reveal_in_finder(path: String) -> Result<(), String> {
-    tokio::process::Command::new("open")
+    let file = std::path::Path::new(&path);
+    if path.trim().is_empty() || !file.is_file() {
+        return Err(format!("Cannot reveal missing file: {path}"));
+    }
+
+    let status = tokio::process::Command::new("open")
         .arg("-R")
-        .arg(&path)
+        .arg(file)
         .status()
         .await
-        .map_err(|e| format!("Failed to reveal file: {e}"))?;
-    Ok(())
+        .map_err(|e| format!("Failed to open Finder: {e}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Finder exited with status {status}"))
+    }
 }
 
 /// Read a file and return its contents as a base64 data URL (thumbnail).

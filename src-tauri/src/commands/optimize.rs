@@ -12,12 +12,15 @@ use crate::formats::FileCategory;
 use crate::progress::ProgressPayload;
 use crate::ActiveJobs;
 
+use super::output::{prepare_output, OutputOptions};
+
 #[tauri::command]
 pub async fn optimize_image(
     app: AppHandle,
     input_path: String,
     keep_metadata: bool,
     job_id: Option<String>,
+    output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let input = PathBuf::from(&input_path);
     if !input.is_file() {
@@ -49,7 +52,8 @@ pub async fn optimize_image(
         });
     }
 
-    let output = optimized_output_path(&input);
+    let extension = format.extension();
+    let prepared_output = prepare_output(&input, extension, "-optimized", output_options)?;
     let job_id = job_id.unwrap_or_else(|| Uuid::new_v4().to_string());
     let cancel_token = CancellationToken::new();
     {
@@ -73,7 +77,13 @@ pub async fn optimize_image(
     );
 
     let started = Instant::now();
-    let result = run_optimization(&input, &output, keep_metadata, cancel_token).await;
+    let result = run_optimization(
+        &input,
+        prepared_output.working_path(),
+        keep_metadata,
+        cancel_token,
+    )
+    .await;
     app.state::<ActiveJobs>()
         .0
         .lock()
@@ -81,7 +91,8 @@ pub async fn optimize_image(
         .remove(&job_id);
 
     match result {
-        Ok(mut result) => {
+        Ok(result) => {
+            let mut result = prepared_output.commit(result)?;
             result.duration_ms = started.elapsed().as_millis() as u64;
             let _ = app.emit(
                 "conversion-progress",
@@ -333,27 +344,4 @@ fn optimization_strategies(extension: &str) -> Vec<Vec<&'static str>> {
         "avif" | "heic" | "heif" => vec![vec!["-quality", "90"]],
         _ => vec![vec![]],
     }
-}
-
-fn optimized_output_path(input: &Path) -> PathBuf {
-    let directory = input.parent().unwrap_or_else(|| Path::new("."));
-    let stem = input
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("image");
-    let extension = input
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("png");
-    let base = directory.join(format!("{stem} (optimized).{extension}"));
-    if !base.exists() {
-        return base;
-    }
-    for index in 1u32.. {
-        let candidate = directory.join(format!("{stem} (optimized {index}).{extension}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!()
 }

@@ -4,6 +4,7 @@ import type {
   FileInfo,
   ConversionResult,
   ConversionError,
+  CollisionPolicy,
   Operation,
   QueueItemState,
   QueueItemStatus,
@@ -11,6 +12,64 @@ import type {
 import { getCompatibleFormats } from "../lib/formats";
 
 export const MAX_QUEUE_ITEMS = 100;
+
+const OUTPUT_PREFERENCES_KEY = "convertkit.outputPreferences.v1";
+const DEFAULT_OUTPUT_SUFFIXES: Record<Operation, string> = {
+  convert: "",
+  resize: "-resized",
+  optimize: "-optimized",
+};
+
+interface OutputPreferences {
+  outputDirectory: string | null;
+  outputSuffixes: Record<Operation, string>;
+  collisionPolicy: CollisionPolicy;
+}
+
+const defaultOutputPreferences: OutputPreferences = {
+  outputDirectory: null,
+  outputSuffixes: DEFAULT_OUTPUT_SUFFIXES,
+  collisionPolicy: "rename",
+};
+
+function loadOutputPreferences(): OutputPreferences {
+  try {
+    const value = window.localStorage.getItem(OUTPUT_PREFERENCES_KEY);
+    if (!value) return defaultOutputPreferences;
+    const stored = JSON.parse(value) as Partial<OutputPreferences>;
+    return {
+      outputDirectory:
+        typeof stored.outputDirectory === "string" && stored.outputDirectory.trim()
+          ? stored.outputDirectory
+          : null,
+      outputSuffixes: {
+        convert:
+          typeof stored.outputSuffixes?.convert === "string"
+            ? stored.outputSuffixes.convert
+            : DEFAULT_OUTPUT_SUFFIXES.convert,
+        resize:
+          typeof stored.outputSuffixes?.resize === "string"
+            ? stored.outputSuffixes.resize
+            : DEFAULT_OUTPUT_SUFFIXES.resize,
+        optimize:
+          typeof stored.outputSuffixes?.optimize === "string"
+            ? stored.outputSuffixes.optimize
+            : DEFAULT_OUTPUT_SUFFIXES.optimize,
+      },
+      collisionPolicy: stored.collisionPolicy === "replace" ? "replace" : "rename",
+    };
+  } catch {
+    return defaultOutputPreferences;
+  }
+}
+
+function saveOutputPreferences(preferences: OutputPreferences) {
+  try {
+    window.localStorage.setItem(OUTPUT_PREFERENCES_KEY, JSON.stringify(preferences));
+  } catch {
+    // Conversion should keep working if preferences cannot be persisted.
+  }
+}
 
 const createQueueItem = (): QueueItemState => ({
   status: "pending",
@@ -63,6 +122,9 @@ interface AppStore {
   error: ConversionError | null;
   jobId: string | null;
   rejectionMessage: string | null;
+  outputDirectory: string | null;
+  outputSuffixes: Record<Operation, string>;
+  collisionPolicy: CollisionPolicy;
 
   setFile: (file: FileInfo) => void;
   addFiles: (files: FileInfo[]) => void;
@@ -74,6 +136,9 @@ interface AppStore {
   setResizeDimensions: (width: number | null, height: number | null) => void;
   setPreserveAspect: (preserve: boolean) => void;
   setKeepMetadata: (keep: boolean) => void;
+  setOutputDirectory: (directory: string | null) => void;
+  setOutputSuffix: (operation: Operation, suffix: string) => void;
+  setCollisionPolicy: (policy: CollisionPolicy) => void;
   startBatch: (paths: string[]) => void;
   startQueueItem: (path: string, jobId: string) => void;
   completeQueueItem: (path: string, result: ConversionResult) => void;
@@ -142,6 +207,7 @@ const initialState = {
     optimize: createEmptySession(),
   },
   rejectionMessage: null,
+  ...loadOutputPreferences(),
 };
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -263,6 +329,35 @@ export const useAppStore = create<AppStore>((set) => ({
   setResizeDimensions: (resizeWidth, resizeHeight) => set({ resizeWidth, resizeHeight }),
   setPreserveAspect: (preserveAspect) => set({ preserveAspect }),
   setKeepMetadata: (keepMetadata) => set({ keepMetadata }),
+  setOutputDirectory: (outputDirectory) =>
+    set((state) => {
+      const preferences = {
+        outputDirectory,
+        outputSuffixes: state.outputSuffixes,
+        collisionPolicy: state.collisionPolicy,
+      };
+      saveOutputPreferences(preferences);
+      return { outputDirectory };
+    }),
+  setOutputSuffix: (operation, suffix) =>
+    set((state) => {
+      const outputSuffixes = { ...state.outputSuffixes, [operation]: suffix };
+      saveOutputPreferences({
+        outputDirectory: state.outputDirectory,
+        outputSuffixes,
+        collisionPolicy: state.collisionPolicy,
+      });
+      return { outputSuffixes };
+    }),
+  setCollisionPolicy: (collisionPolicy) =>
+    set((state) => {
+      saveOutputPreferences({
+        outputDirectory: state.outputDirectory,
+        outputSuffixes: state.outputSuffixes,
+        collisionPolicy,
+      });
+      return { collisionPolicy };
+    }),
 
   startBatch: (paths) =>
     set((state) => {

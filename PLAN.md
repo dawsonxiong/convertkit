@@ -1,6 +1,6 @@
 # ConvertKit Product and Development Plan
 
-> Living roadmap. Last audited against the codebase on 2026-08-28.
+> Living roadmap. Last audited against the codebase on 2026-08-29.
 
 ## North star
 
@@ -68,7 +68,10 @@ the primary list. Future features should not be shipped as disabled buttons.
   retry, and aggregate completion results.
 - Independent Convert, Resize, and Optimize workspace sessions that retain uploaded
   files, queue state, settings, and finished results while navigating between tools.
-- Conversion and resize output with deduplicated, source-preserving names.
+- Shared output controls for Convert, Resize, and Optimize: source or custom folder,
+  per-tool filename suffix, Keep both or atomic Replace existing behavior, and hard
+  source-overwrite protection.
+- Output folder, suffixes, and collision preference persist locally across launches.
 - Determinate FFmpeg progress and indeterminate progress for other engines.
 - Cancellation tokens, timeouts, partial-output cleanup, and structured errors.
 - Dependency detection that also searches common Homebrew and Cargo locations.
@@ -97,9 +100,8 @@ the primary list. Future features should not be shipped as disabled buttons.
 
 - No operation-aware job request shared by Convert and Resize.
 - Required tools are checked globally at launch rather than for the selected task.
-- No user-facing output location or naming controls.
 - The current batch queue is in-memory. It has no folder input, recent jobs, retry
-  history, user-selected output policy, or persisted preferences yet.
+  history, or queue recovery after an app restart yet.
 - A debug macOS app bundle builds cleanly; interactive release smoke testing remains.
 - No clean-machine packaging verification, signing, notarization, or update flow.
 - The README lists broad format support but does not distinguish input-only formats,
@@ -188,8 +190,8 @@ This phase is the platform for every later toolbox area.
 - [x] Retain each tool's uploaded files, queue state, settings, and results while
   switching between sidebar tabs.
 - [ ] Persist a small recent-jobs list with reopen and reveal actions.
-- [ ] Add output folder, suffix, collision policy, and "replace source" safeguards.
-- [ ] Persist lightweight user preferences locally across app launches.
+- [x] Add output folder, suffix, collision policy, and source-overwrite safeguards.
+- [x] Persist lightweight output preferences locally across app launches.
 
 Exit criteria: a new tool can plug into one job pipeline without rebuilding lifecycle
 logic or UI states.
@@ -306,10 +308,9 @@ This repository is at a useful checkpoint for pushing. Convert, Resize, and Opti
 all use the shared workspace and real multi-file queue. Per-tool sessions preserve
 uploaded files, settings, item status, and results when the user changes tabs.
 
-The next platform work is capability preflight, a typed `JobRequest`, output folder
-and naming controls, folder input, recent jobs, and preferences that survive an app
-restart. The next image-tool decision is whether to build crop/rotate or reusable
-output presets first.
+The next platform work is capability preflight, a typed `JobRequest`, folder input,
+and a small recent-jobs list with reopen and reveal actions. The next image-tool
+decision is whether to build crop/rotate or reusable output presets first.
 
 For video, keep the product narrower than HandBrake: clear presets for dimensions,
 codec, and file-size/quality reduction, followed by focused trim, audio, thumbnail,

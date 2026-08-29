@@ -25,7 +25,7 @@ export function FormatPicker() {
         <select
           value={outputFormat ?? ""}
           onChange={(event) => setOutputFormat(event.target.value)}
-          className="h-9 w-full appearance-none border border-[#44464f] bg-[#0e0e10] px-3 pr-8 text-sm font-medium text-[#e5e1e4] outline-none transition-colors focus:border-[#b0c6ff]"
+          className="h-9 w-full appearance-none border border-[#44464f] bg-[#0e0e10] px-3 pr-8 text-sm font-medium text-[#e5e1e4] outline-none focus:border-[#b0c6ff]"
         >
           {compatible.map((format) => (
             <option key={format} value={format}>

@@ -1,7 +1,7 @@
-import { AnimatePresence, motion } from "framer-motion";
 import { ConvertButton } from "./ConvertButton";
 import { FilePreview } from "./FilePreview";
 import { OptimizePanel } from "./OptimizePanel";
+import { OutputSettings } from "./OutputSettings";
 import { ResizePanel } from "./ResizePanel";
 import { useAppStore } from "../store/useAppStore";
 
@@ -39,13 +39,25 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
     <section className="flex min-h-0 flex-col border border-[#3b3d46] bg-[#131315]">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#3b3d46] bg-[#1b1b1d] px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="shrink-0 text-[13px] font-semibold text-white/85">Queue ({files.length})</h2>
+          <h2 className="shrink-0 text-[13px] font-semibold text-white/85">
+            Queue ({files.length})
+          </h2>
           {state === "done" && processedCount > 0 && (
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
-              <span aria-hidden="true" className="text-white/20">·</span>
-              {completedCount > 0 && <span className="whitespace-nowrap text-emerald-300">{completedCount} complete</span>}
-              {failedCount > 0 && <span className="whitespace-nowrap text-red-300">{failedCount} failed</span>}
-              {skippedCount > 0 && <span className="whitespace-nowrap text-white/40">{skippedCount} skipped</span>}
+              <span aria-hidden="true" className="text-white/20">
+                ·
+              </span>
+              {completedCount > 0 && (
+                <span className="whitespace-nowrap text-emerald-300">
+                  {completedCount} complete
+                </span>
+              )}
+              {failedCount > 0 && (
+                <span className="whitespace-nowrap text-red-300">{failedCount} failed</span>
+              )}
+              {skippedCount > 0 && (
+                <span className="whitespace-nowrap text-white/40">{skippedCount} skipped</span>
+              )}
             </div>
           )}
         </div>
@@ -53,7 +65,7 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
           <button
             type="button"
             onClick={reset}
-            className="text-[11px] text-white/45 transition-colors hover:text-white/80"
+            className="text-[11px] text-white/45 hover:text-white/80"
           >
             Clear
           </button>
@@ -61,76 +73,36 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
       </header>
 
       <div className="queue-grid queue-scroll min-h-0 flex-1 overflow-y-auto p-3">
-        <AnimatePresence mode="wait">
-          {state === "empty" && (
-            <motion.div
-              key="queue-empty"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="grid h-full min-h-40 place-items-center text-sm text-white/40"
-            >
-              No files added
-            </motion.div>
-          )}
+        {state === "empty" ? (
+          <div className="grid h-full min-h-40 place-items-center text-sm text-white/40">
+            No files added
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              {files.map((item) => (
+                <FilePreview
+                  key={item.path}
+                  file={item}
+                  canDismiss={state === "loaded"}
+                  onCancel={state === "converting" ? onCancelItem : undefined}
+                  onSkip={state === "converting" ? () => skipQueueItem(item.path) : undefined}
+                  onRetry={state === "done" ? () => onStart([item.path]) : undefined}
+                />
+              ))}
+            </div>
 
-          {state === "loaded" && (
-            <motion.div
-              key={`queue-loaded-${operation}`}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="flex flex-col gap-4"
-            >
-              <div className="flex flex-col gap-2">
-                {files.map((item) => (
-                  <FilePreview key={item.path} file={item} canDismiss />
-                ))}
-              </div>
-              {operation === "resize" && <ResizePanel />}
-              {operation === "optimize" && <OptimizePanel />}
-            </motion.div>
-          )}
+            {state === "loaded" && operation === "resize" && <ResizePanel />}
+            {state === "loaded" && operation === "optimize" && <OptimizePanel />}
+            {state === "loaded" && <OutputSettings />}
 
-          {state === "converting" && (
-            <motion.div
-              key="queue-converting"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col gap-5"
-            >
-              <div className="flex flex-col gap-2">
-                {files.map((item) => (
-                  <FilePreview
-                    key={item.path}
-                    file={item}
-                    onCancel={onCancelItem}
-                    onSkip={() => skipQueueItem(item.path)}
-                  />
-                ))}
-              </div>
+            {state === "converting" && (
               <p className="text-[10px] text-white/40">
                 {processedCount} of {files.length} processed
               </p>
-            </motion.div>
-          )}
-
-          {state === "done" && (
-            <motion.div
-              key="queue-done"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col gap-2"
-            >
-              <div className="flex flex-col gap-2">
-                {files.map((item) => (
-                  <FilePreview key={item.path} file={item} onRetry={() => onStart([item.path])} />
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </div>
+        )}
       </div>
 
       {(state === "loaded" || state === "converting" || state === "done") && (

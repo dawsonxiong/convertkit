@@ -13,7 +13,7 @@ export function OptimizePanel() {
             type="button"
             onClick={() => setKeepMetadata(false)}
             aria-pressed={!keepMetadata}
-            className={`h-7 px-3 text-[10px] font-medium transition-colors ${
+            className={`h-7 px-3 text-[10px] font-medium ${
               !keepMetadata ? "bg-[#20283a] text-[#b0c6ff]" : "text-white/45 hover:text-white/75"
             }`}
           >
@@ -23,7 +23,7 @@ export function OptimizePanel() {
             type="button"
             onClick={() => setKeepMetadata(true)}
             aria-pressed={keepMetadata}
-            className={`h-7 border-l border-[#44464f] px-3 text-[10px] font-medium transition-colors ${
+            className={`h-7 border-l border-[#44464f] px-3 text-[10px] font-medium ${
               keepMetadata ? "bg-[#20283a] text-[#b0c6ff]" : "text-white/45 hover:text-white/75"
             }`}
           >

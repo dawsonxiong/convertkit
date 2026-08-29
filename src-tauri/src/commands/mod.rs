@@ -2,6 +2,7 @@ mod cancel;
 mod convert;
 mod detect;
 mod optimize;
+mod output;
 mod resize;
 
 pub use cancel::cancel_conversion;

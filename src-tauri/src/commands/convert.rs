@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use log::warn;
@@ -10,6 +10,8 @@ use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
 use crate::ActiveJobs;
+
+use super::output::{prepare_output, OutputOptions};
 
 /// Guard that removes a job from [`ActiveJobs`] on drop, even if a panic
 /// occurs during conversion.
@@ -36,6 +38,7 @@ pub async fn convert(
     input_path: String,
     output_format: String,
     job_id: Option<String>,
+    output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let started = Instant::now();
     let job_id = job_id.unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -125,28 +128,7 @@ pub async fn convert(
         });
     }
 
-    // --- Build output path (dedup) ---
-    let mut output_path = dedup_output_path(&input, out_format);
-
-    // Output directory writability check
-    if let Some(out_dir) = output_path.parent() {
-        let probe = out_dir.join(".convertkit_write_test");
-        match std::fs::File::create(&probe) {
-            Ok(_) => {
-                let _ = std::fs::remove_file(&probe);
-            }
-            Err(_) => {
-                // Fall back to ~/Downloads/ConvertKit/
-                let fallback = dirs_downloads_fallback();
-                let _ = std::fs::create_dir_all(&fallback);
-                output_path = dedup_output_path_in(&input, out_format, &fallback);
-                warn!(
-                    "Output dir not writable, falling back to {}",
-                    fallback.display()
-                );
-            }
-        }
-    }
+    let prepared_output = prepare_output(&input, out_format.extension(), "", output_options)?;
 
     // Prevent double-submit
     let cancel_token = tokio_util::sync::CancellationToken::new();
@@ -179,7 +161,7 @@ pub async fn convert(
 
     let request = ConversionRequest {
         input_path: input,
-        output_path,
+        output_path: prepared_output.working_path().to_path_buf(),
         input_format,
         output_format: out_format,
     };
@@ -210,7 +192,8 @@ pub async fn convert(
     // Guard handles cleanup on drop, no manual remove needed.
 
     match result {
-        Ok(mut res) => {
+        Ok(res) => {
+            let mut res = prepared_output.commit(res)?;
             res.duration_ms = started.elapsed().as_millis() as u64;
             let _ = app.emit(
                 "conversion-progress",
@@ -223,59 +206,4 @@ pub async fn convert(
         }
         Err(e) => Err(e),
     }
-}
-
-/// Fallback output directory: ~/Downloads/ConvertKit/
-fn dirs_downloads_fallback() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join("Downloads").join("ConvertKit")
-}
-
-/// Like [`dedup_output_path`] but places the output in a specific directory.
-fn dedup_output_path_in(input: &Path, format: Format, dir: &Path) -> PathBuf {
-    let stem = input
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("output");
-    let ext = format.extension();
-
-    let base = dir.join(format!("{}.{}", stem, ext));
-    if !base.exists() {
-        return base;
-    }
-
-    for i in 1u32.. {
-        let candidate = dir.join(format!("{} ({}).{}", stem, i, ext));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-
-    base
-}
-
-/// Build an output path in the same directory as `input`, using the target
-/// format's extension. If the file already exists, append `(1)`, `(2)`, etc.
-fn dedup_output_path(input: &Path, format: Format) -> PathBuf {
-    let dir = input.parent().unwrap_or_else(|| Path::new("."));
-    let stem = input
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("output");
-    let ext = format.extension();
-
-    let base = dir.join(format!("{}.{}", stem, ext));
-    if !base.exists() {
-        return base;
-    }
-
-    for i in 1u32.. {
-        let candidate = dir.join(format!("{} ({}).{}", stem, i, ext));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-
-    // Unreachable in practice, but satisfy the compiler.
-    base
 }

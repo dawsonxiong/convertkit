@@ -29,6 +29,9 @@ pub enum ConversionError {
     #[error("Output file was not created")]
     OutputMissing,
 
+    #[error("Output conflict at {path}: {message}")]
+    OutputConflict { path: String, message: String },
+
     #[error("Disk is full")]
     DiskFull,
 }

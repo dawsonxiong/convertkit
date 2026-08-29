@@ -2,23 +2,25 @@ import { useCallback } from "react";
 import { convert, cancelConversion } from "../lib/tauri";
 import { runQueue } from "../lib/runQueue";
 import { useAppStore } from "../store/useAppStore";
+import { useOutputOptions } from "./useOutputOptions";
 
 export function useConvert() {
   const files = useAppStore((s) => s.files);
   const outputFormats = useAppStore((s) => s.outputFormats);
   const state = useAppStore((s) => s.state);
   const jobId = useAppStore((s) => s.jobId);
+  const outputOptions = useOutputOptions("convert");
 
   const doConvert = useCallback(
     async (paths?: string[]) => {
       if (files.length === 0 || files.some((file) => !outputFormats[file.path])) return;
       await runQueue(
         files,
-        (file, jobId) => convert(file.path, outputFormats[file.path], jobId),
+        (file, jobId) => convert(file.path, outputFormats[file.path], jobId, outputOptions),
         paths,
       );
     },
-    [files, outputFormats],
+    [files, outputFormats, outputOptions],
   );
 
   const cancel = useCallback(async () => {

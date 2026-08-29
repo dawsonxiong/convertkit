@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { useAppStore } from "../store/useAppStore";
 
 interface ConvertButtonProps {
@@ -26,11 +25,11 @@ export function ConvertButton({ onClick, mode, disabled = false }: ConvertButton
           : false));
 
   return (
-    <motion.button
+    <button
       type="button"
       onClick={onClick}
       disabled={isDisabled}
-      className={`flex h-8 w-full items-center justify-center gap-2 border text-[11px] font-medium transition-colors ${
+      className={`flex h-8 w-full items-center justify-center gap-2 border text-[11px] font-medium ${
         mode === "cancel"
           ? "border-[#44464f] bg-[#201f22] text-white/70 hover:bg-[#2a2a2c] hover:text-white"
           : isDisabled
@@ -38,10 +37,10 @@ export function ConvertButton({ onClick, mode, disabled = false }: ConvertButton
             : "border-[#b0c6ff] bg-[#b0c6ff] text-[#001944] hover:border-[#d9e2ff] hover:bg-[#d9e2ff]"
       }`}
     >
-      {mode === "cancel" ? (
-        <>
+      <span className="flex items-center gap-2">
+        {mode === "cancel" && (
           <svg
-            className="w-3.5 h-3.5"
+            className="size-3.5"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -49,13 +48,13 @@ export function ConvertButton({ onClick, mode, disabled = false }: ConvertButton
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
-          Cancel
-        </>
-      ) : files.length > 1 ? (
-        `${actionLabel} ${files.length} files`
-      ) : (
-        actionLabel
-      )}
-    </motion.button>
+        )}
+        {mode === "cancel"
+          ? "Cancel"
+          : files.length > 1
+            ? `${actionLabel} ${files.length} files`
+            : actionLabel}
+      </span>
+    </button>
   );
 }

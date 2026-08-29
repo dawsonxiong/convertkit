@@ -31,6 +31,7 @@ export interface ConversionError {
     | "Cancelled"
     | "Timeout"
     | "OutputMissing"
+    | "OutputConflict"
     | "DiskFull";
   detail: Record<string, string>;
 }
@@ -61,3 +62,11 @@ export interface DependencyStatus {
 export type AppState = "empty" | "loaded" | "converting" | "done" | "error";
 
 export type Operation = "convert" | "resize" | "optimize";
+
+export type CollisionPolicy = "rename" | "replace";
+
+export interface OutputOptions {
+  directory: string | null;
+  suffix: string;
+  collisionPolicy: CollisionPolicy;
+}

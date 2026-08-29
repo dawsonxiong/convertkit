@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { useAppStore } from "../store/useAppStore";
 
 export function ProgressBar() {
@@ -17,11 +16,9 @@ export function ProgressBar() {
             <div className="h-full w-1/4 animate-indeterminate rounded-full bg-blue-500" />
           </div>
         ) : (
-          <motion.div
-            className="h-full rounded-full bg-blue-500"
-            initial={{ width: 0 }}
-            animate={{ width: `${percent}%` }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+          <div
+            className="h-full rounded-full bg-blue-500 transition-[width] duration-150 ease-out"
+            style={{ width: `${percent}%` }}
           />
         )}
       </div>

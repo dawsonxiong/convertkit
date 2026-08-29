@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { checkDependencies } from "../lib/tauri";
 import type { DependencyStatus } from "../types";
 
@@ -50,11 +49,7 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="workspace-card flex w-full max-w-md flex-col items-center gap-5 px-8 py-9"
-    >
+    <div className="workspace-card flex w-full max-w-md flex-col items-center gap-5 px-8 py-9">
       <div className="flex size-12 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10">
         <svg
           className="size-6 text-blue-400"
@@ -86,7 +81,6 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
           w-full max-w-xs px-3 py-2 text-xs font-mono text-left rounded-[var(--radius-button)]
           bg-white/[0.04] text-white/60 border border-white/[0.06]
           hover:border-white/[0.14]
-          transition-all duration-200
         "
         title="Click to copy"
       >
@@ -118,7 +112,6 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
           className="
             flex-1 h-9 rounded-[var(--radius-button)] text-xs font-medium
             bg-white/[0.06] text-white/60 hover:bg-white/[0.10]
-            transition-all duration-200
           "
         >
           Check again
@@ -129,12 +122,11 @@ export function OnboardingCheck({ onReady }: OnboardingCheckProps) {
           className="
             flex-1 h-9 rounded-[var(--radius-button)] text-xs font-medium
             bg-blue-600 hover:bg-blue-500 text-white
-            transition-all duration-200
           "
         >
           Continue anyway
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 }

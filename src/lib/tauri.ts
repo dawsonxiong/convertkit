@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { FileInfo, ConversionResult, DependencyStatus } from "../types";
+import type { FileInfo, ConversionResult, DependencyStatus, OutputOptions } from "../types";
 
 /** Whether the frontend is running inside Tauri rather than a browser preview. */
 export function isTauriRuntime(): boolean {
@@ -11,11 +11,13 @@ export async function convert(
   inputPath: string,
   outputFormat: string,
   jobId: string,
+  outputOptions: OutputOptions,
 ): Promise<ConversionResult> {
   return invoke<ConversionResult>("convert", {
     inputPath,
     outputFormat,
     jobId,
+    outputOptions,
   });
 }
 
@@ -26,6 +28,7 @@ export async function resizeImage(
   height: number,
   preserveAspect: boolean,
   jobId: string,
+  outputOptions: OutputOptions,
 ): Promise<ConversionResult> {
   return invoke<ConversionResult>("resize_image", {
     inputPath,
@@ -33,6 +36,7 @@ export async function resizeImage(
     height,
     preserveAspect,
     jobId,
+    outputOptions,
   });
 }
 
@@ -41,11 +45,13 @@ export async function optimizeImage(
   inputPath: string,
   keepMetadata: boolean,
   jobId: string,
+  outputOptions: OutputOptions,
 ): Promise<ConversionResult> {
   return invoke<ConversionResult>("optimize_image", {
     inputPath,
     keepMetadata,
     jobId,
+    outputOptions,
   });
 }
 
