@@ -38,7 +38,17 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
   return (
     <section className="flex min-h-0 flex-col border border-[#3b3d46] bg-[#131315]">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#3b3d46] bg-[#1b1b1d] px-3">
-        <h2 className="text-[13px] font-semibold text-white/85">Queue ({files.length})</h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="shrink-0 text-[13px] font-semibold text-white/85">Queue ({files.length})</h2>
+          {state === "done" && processedCount > 0 && (
+            <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
+              <span aria-hidden="true" className="text-white/20">·</span>
+              {completedCount > 0 && <span className="whitespace-nowrap text-emerald-300">{completedCount} complete</span>}
+              {failedCount > 0 && <span className="whitespace-nowrap text-red-300">{failedCount} failed</span>}
+              {skippedCount > 0 && <span className="whitespace-nowrap text-white/40">{skippedCount} skipped</span>}
+            </div>
+          )}
+        </div>
         {canClear && (
           <button
             type="button"
@@ -50,7 +60,7 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
         )}
       </header>
 
-      <div className="queue-scroll min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="queue-grid queue-scroll min-h-0 flex-1 overflow-y-auto p-3">
         <AnimatePresence mode="wait">
           {state === "empty" && (
             <motion.div
@@ -111,13 +121,8 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
               key="queue-done"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex flex-col gap-3"
+              className="flex flex-col gap-2"
             >
-              <div className="flex items-center gap-4 border border-[#3b3d46] bg-[#1b1b1d] px-3 py-2 text-[10px]">
-                <span className="font-medium text-emerald-300">{completedCount} complete</span>
-                {failedCount > 0 && <span className="text-red-300">{failedCount} failed</span>}
-                {skippedCount > 0 && <span className="text-white/40">{skippedCount} skipped</span>}
-              </div>
               <div className="flex flex-col gap-2">
                 {files.map((item) => (
                   <FilePreview key={item.path} file={item} onRetry={() => onStart([item.path])} />
@@ -144,6 +149,7 @@ export function WorkspaceQueue({ onStart, onCancel, onCancelItem }: WorkspaceQue
               <ConvertButton
                 onClick={state === "converting" ? onCancel : () => onStart()}
                 mode={state === "converting" ? "cancel" : "convert"}
+                disabled={state === "done" && completedCount === files.length}
               />
             </div>
           </div>

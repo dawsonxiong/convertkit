@@ -200,7 +200,7 @@ export default function App() {
       <section className="relative flex min-w-0 flex-1 flex-col">
         <header className="h-10 shrink-0 border-b border-[#3b3d46]" data-tauri-drag-region />
 
-        <main className="min-h-0 flex-1 overflow-hidden p-6">
+        <main className="workspace-grid min-h-0 flex-1 overflow-hidden p-6">
           <div className="flex h-full min-h-0 flex-col">
             <header className="shrink-0">
               <h1 className="text-2xl font-semibold tracking-tight text-[#e5e1e4]">
@@ -215,7 +215,7 @@ export default function App() {
                   ? "Set exact dimensions or scale an image by percentage."
                   : isOptimize
                     ? "Reduce file size while keeping images looking sharp."
-                    : "Convert images, video, audio, documents, and vectors."}
+                    : "Convert images, video, audio, and documents."}
               </p>
             </header>
 

@@ -86,7 +86,7 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
       <span className="mt-2 max-w-64 text-sm leading-relaxed text-[#92939d]">
         {operation !== "convert"
           ? "PNG, JPEG, WebP, GIF, HEIC, TIFF, BMP, and AVIF."
-          : "Images, video, audio, documents, and vectors."}
+          : "Images, video, audio, and documents."}
       </span>
       <span className="mt-5 flex h-8 items-center border border-[#44464f] bg-[#201f22] px-4 text-[11px] font-medium text-[#e5e1e4] transition-colors group-hover:bg-[#2a2a2c]">
         Browse files

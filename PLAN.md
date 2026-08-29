@@ -100,13 +100,12 @@ the primary list. Future features should not be shipped as disabled buttons.
 - No user-facing output location or naming controls.
 - The current batch queue is in-memory. It has no folder input, recent jobs, retry
   history, user-selected output policy, or persisted preferences yet.
-- No clean packaged-app smoke pass has been completed for this checkpoint.
+- A debug macOS app bundle builds cleanly; interactive release smoke testing remains.
 - No clean-machine packaging verification, signing, notarization, or update flow.
 - The README lists broad format support but does not distinguish input-only formats,
   optional engines, and tested conversion pairs.
-- Product name and bundle identifier disagree. `ConvertKit` also needs a naming and
-  trademark check before public distribution; `com.dropforge.app` should not ship
-  accidentally under a different public name.
+- `ConvertKit` still needs a naming and trademark check before public distribution.
+  The bundle identifier is aligned as `com.dropforge.convertkit`.
 
 ## Roadmap
 

@@ -9,6 +9,7 @@
     "check": "tsgo -config tsconfig.json",
     "lint": "oxlint -c .oxlintrc.json src/",
     "format": "oxfmt -c .oxfmtrc.json --write src/",
+    "icons:generate": "sh scripts/generate-icons.sh",
     "preview": "vite preview",
     "tauri": "tauri"
   },

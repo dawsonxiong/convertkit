@@ -92,12 +92,14 @@ export function FilePreview({
         </div>
       </div>
 
-      {/* Source format */}
-      <span className="shrink-0 border border-[#44464f] bg-[#201f22] px-1.5 py-1 text-[10px] font-medium text-white/55">
-        {label}
-      </span>
+      {/* Completed conversions already show their result, so the format chain is no longer needed. */}
+      {(operation !== "convert" || status !== "completed") && (
+        <span className="shrink-0 border border-[#44464f] bg-[#201f22] px-1.5 py-1 text-[10px] font-medium text-white/55">
+          {label}
+        </span>
+      )}
 
-      {operation === "convert" && (
+      {operation === "convert" && status !== "completed" && (
         <>
           <svg
             className="size-3 shrink-0 text-white/35"

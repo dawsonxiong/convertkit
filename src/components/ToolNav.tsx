@@ -65,11 +65,11 @@ const ICONS: Record<Operation, () => React.JSX.Element> = {
 
 export function ToolNav({ operation, disabled, onChange }: ToolNavProps) {
   return (
-    <aside className="flex w-48 shrink-0 flex-col border-r border-[#3b3d46] bg-[#131315] px-4 pb-4">
+    <aside className="sidebar-grid flex w-48 shrink-0 flex-col border-r border-[#3b3d46] px-4 pb-4">
       <div className="h-10 shrink-0" data-tauri-drag-region />
 
       <div className="mb-5 flex items-center gap-2 py-2">
-        <img src={appIcon} alt="" className="size-[38px] shrink-0" />
+        <img src={appIcon} alt="" className="size-8 shrink-0" />
         <p className="brand-wordmark text-xl font-semibold leading-none text-[#f2f2f4]">
           ConvertKit
         </p>

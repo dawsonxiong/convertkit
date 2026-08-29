@@ -5,7 +5,9 @@
 The selected icon follows the bold circular-conversion language of the user-supplied
 reference while using ConvertKit's own palette and geometry. It was generated with
 the bundled ImageGen CLI and `gpt-image-2` at high quality, then normalized locally
-to exactly three flat colors with transparent outer corners.
+to a warm off-white rounded square and periwinkle mark with transparent corners. A
+superseded near-black outer frame was removed so the white square is the icon's true
+optical boundary.
 
 - Final master: [`convertkit-reference-final.png`](../../output/imagegen/app-icons/convertkit-reference-final.png)
 - Installed into the complete Tauri platform icon set under `src-tauri/icons/`
@@ -31,5 +33,10 @@ Avoid: copying Image 1 exactly, thin strokes, four arrows, recycling logos, sync
 
 - `convertkit-reference-final.png` is the only editable 1024px source asset.
 - `src-tauri/icons/` contains only the platform outputs generated from that source.
+- Regenerate every platform variant with `pnpm icons:generate`.
+- The legacy macOS ICNS uses an 824px tile centered on its 1024px source canvas,
+  matching the 206px opaque footprint of Apple's rounded-square icons at 256px.
+- The macOS ICNS must contain 16, 32, 64, 128, 256, 512, and 1024px representations;
+  the Windows ICO must contain 16, 24, 32, 48, 64, and 256px representations.
 - Rejected concepts, temporary review renders, and duplicate masters are not kept in
   the repository.

@@ -4,9 +4,10 @@ import { useAppStore } from "../store/useAppStore";
 interface ConvertButtonProps {
   onClick: () => void;
   mode: "convert" | "cancel";
+  disabled?: boolean;
 }
 
-export function ConvertButton({ onClick, mode }: ConvertButtonProps) {
+export function ConvertButton({ onClick, mode, disabled = false }: ConvertButtonProps) {
   const files = useAppStore((s) => s.files);
   const outputFormats = useAppStore((s) => s.outputFormats);
   const operation = useAppStore((s) => s.operation);
@@ -16,7 +17,8 @@ export function ConvertButton({ onClick, mode }: ConvertButtonProps) {
     operation === "resize" ? "Resize" : operation === "optimize" ? "Optimize" : "Convert";
   const isDisabled =
     mode === "convert" &&
-    (files.length === 0 ||
+    (disabled ||
+      files.length === 0 ||
       (operation === "resize"
         ? !resizeWidth || !resizeHeight
         : operation === "convert"
