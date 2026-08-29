@@ -29,8 +29,8 @@ export function useFileDrop() {
             const supported = paths.filter((path) => isPathSupportedForOperation(path, operation));
             if (supported.length === 0) {
               setRejection(
-                operation === "resize"
-                  ? "Resize works with raster images"
+                operation !== "convert"
+                  ? `${operation === "resize" ? "Resize" : "Optimize"} works with raster images`
                   : "Those file types are not supported",
               );
               return;

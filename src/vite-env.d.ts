@@ -6,3 +6,4 @@ declare module "*.css" {
 }
 
 declare module "@fontsource-variable/geist" {}
+declare module "@fontsource-variable/inclusive-sans" {}

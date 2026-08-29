@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useConvert } from "../hooks/useConvert";
+import { useOptimize } from "../hooks/useOptimize";
 import { useResize } from "../hooks/useResize";
 import { formatFileSize } from "../lib/fileUtils";
 import { revealInFinder } from "../lib/tauri";
@@ -40,8 +41,10 @@ export function StatusMessage({ variant }: StatusMessageProps) {
   const reset = useAppStore((store) => store.reset);
   const { convert } = useConvert();
   const { resize } = useResize();
-  const retry = operation === "resize" ? resize : convert;
-  const actionName = operation === "resize" ? "Resize" : "Conversion";
+  const { optimize } = useOptimize();
+  const retry = operation === "resize" ? resize : operation === "optimize" ? optimize : convert;
+  const actionName =
+    operation === "resize" ? "Resize" : operation === "optimize" ? "Optimization" : "Conversion";
 
   const handleReveal = () => {
     if (result?.output_path) revealInFinder(result.output_path);
@@ -84,7 +87,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
 
         <p className="mt-4 text-base font-semibold text-white/90">
           {isBatch
-            ? `${results.length} files ${operation === "resize" ? "resized" : "converted"}`
+            ? `${results.length} files ${operation === "resize" ? "resized" : operation === "optimize" ? "optimized" : "converted"}`
             : `${actionName} complete`}
         </p>
         {!isBatch && <p className="mt-1 max-w-sm truncate text-sm text-white/60">{outputName}</p>}
@@ -99,7 +102,11 @@ export function StatusMessage({ variant }: StatusMessageProps) {
             Reveal in Finder
           </button>
           <button type="button" onClick={reset} className="primary-button flex-1">
-            {operation === "resize" ? "Resize another" : "Convert another"}
+            {operation === "resize"
+              ? "Resize another"
+              : operation === "optimize"
+                ? "Optimize another"
+                : "Convert another"}
           </button>
         </div>
       </motion.div>
@@ -156,7 +163,7 @@ export function StatusMessage({ variant }: StatusMessageProps) {
 
         <div className="mt-5 flex w-full gap-2">
           {kind !== "Cancelled" && file && (
-            <button type="button" onClick={retry} className="secondary-button flex-1">
+            <button type="button" onClick={() => retry()} className="secondary-button flex-1">
               Retry
             </button>
           )}

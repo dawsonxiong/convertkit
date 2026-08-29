@@ -8,6 +8,7 @@ import { ToolNav } from "./components/ToolNav";
 import { WorkspaceQueue } from "./components/WorkspaceQueue";
 import { useConvert } from "./hooks/useConvert";
 import { useFileDrop } from "./hooks/useFileDrop";
+import { useOptimize } from "./hooks/useOptimize";
 import { useProgress } from "./hooks/useProgress";
 import { useResize } from "./hooks/useResize";
 import { getOperationDialogFilter, isPathSupportedForOperation } from "./lib/operations";
@@ -33,15 +34,22 @@ export default function App() {
   const rejectionMessage = useAppStore((store) => store.rejectionMessage);
   const clearRejection = useAppStore((store) => store.clearRejection);
   const setRejection = useAppStore((store) => store.setRejection);
+  const requestBatchCancel = useAppStore((store) => store.requestBatchCancel);
   const { isDragging } = useFileDrop();
   const { convert, cancel } = useConvert();
   const { resize, cancel: cancelResize } = useResize();
+  const { optimize, cancel: cancelOptimize } = useOptimize();
 
   useProgress();
 
   const isResize = operation === "resize";
-  const startOperation = isResize ? resize : convert;
-  const cancelOperation = isResize ? cancelResize : cancel;
+  const isOptimize = operation === "optimize";
+  const startOperation = isResize ? resize : isOptimize ? optimize : convert;
+  const cancelOperation = isResize ? cancelResize : isOptimize ? cancelOptimize : cancel;
+  const cancelBatch = useCallback(() => {
+    requestBatchCancel();
+    void cancelOperation();
+  }, [cancelOperation, requestBatchCancel]);
 
   const loadExternalFile = useCallback(
     async (path: string) => {
@@ -86,7 +94,12 @@ export default function App() {
   const openFileBrowser = useCallback(async () => {
     const selected = await open({
       multiple: true,
-      title: operation === "resize" ? "Choose images to resize" : "Choose files to convert",
+      title:
+        operation === "convert"
+          ? "Choose files to convert"
+          : operation === "resize"
+            ? "Choose images to resize"
+            : "Choose images to optimize",
       filters: getOperationDialogFilter(operation),
     });
     if (!selected) return;
@@ -121,14 +134,14 @@ export default function App() {
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        if (state === "converting") cancelOperation();
+        if (state === "converting") cancelBatch();
         else if (state !== "empty") reset();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [state, result, startOperation, cancelOperation, reset, openFileBrowser]);
+  }, [state, result, startOperation, cancelBatch, reset, openFileBrowser]);
 
   useEffect(() => {
     const supportedMimes = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"];
@@ -191,18 +204,28 @@ export default function App() {
           <div className="flex h-full min-h-0 flex-col">
             <header className="shrink-0">
               <h1 className="text-2xl font-semibold tracking-tight text-[#e5e1e4]">
-                {isResize ? "Resize images" : "Universal file converter"}
+                {isResize
+                  ? "Resize images"
+                  : isOptimize
+                    ? "Optimize images"
+                    : "Universal file converter"}
               </h1>
               <p className="mt-1 text-sm text-[#a8a8b1]">
                 {isResize
                   ? "Set exact dimensions or scale an image by percentage."
-                  : "Convert images, video, audio, documents, and vectors."}
+                  : isOptimize
+                    ? "Reduce file size while keeping images looking sharp."
+                    : "Convert images, video, audio, documents, and vectors."}
               </p>
             </header>
 
             <div className="mt-5 grid min-h-0 flex-1 grid-cols-[minmax(0,7fr)_minmax(280px,5fr)] gap-4">
               <DropZone isDragging={isDragging} disabled={state === "converting"} />
-              <WorkspaceQueue onStart={startOperation} onCancel={cancelOperation} />
+              <WorkspaceQueue
+                onStart={startOperation}
+                onCancel={cancelBatch}
+                onCancelItem={cancelOperation}
+              />
             </div>
           </div>
         </main>

@@ -2,6 +2,7 @@ import { StrictMode, Component } from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource-variable/geist";
+import "@fontsource-variable/inclusive-sans";
 import "./styles/globals.css";
 import App from "./App";
 

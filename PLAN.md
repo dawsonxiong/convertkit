@@ -49,7 +49,7 @@ the primary list. Future features should not be shipped as disabled buttons.
 - Drag-and-drop, file browsing, paste, Open With, and keyboard operation are
   first-class input paths.
 - A new tool must include validation, cancellation, collision-safe output naming,
-  and one end-to-end test before it is considered complete.
+  and a native-app smoke check before it is considered complete.
 
 ## Current codebase audit
 
@@ -62,11 +62,12 @@ the primary list. Future features should not be shipped as disabled buttons.
 - ImageMagick, FFmpeg, Pandoc, LibreOffice, resvg, and VTracer routing.
 - Image, video, audio, document, and SVG format detection with common extension
   aliases.
-- Multi-file browse and drag-and-drop input for Convert and Resize.
+- Multi-file browse and drag-and-drop input for Convert, Resize, and Optimize.
 - A real in-memory queue with duplicate prevention, item removal, per-file conversion
-  targets, sequential batch processing, and aggregate completion results.
-- Independent Convert and Resize workspace sessions that retain queued files,
-  settings, and results while navigating between tools.
+  targets, sequential batch processing, per-item status/progress, skip, cancel,
+  retry, and aggregate completion results.
+- Independent Convert, Resize, and Optimize workspace sessions that retain uploaded
+  files, queue state, settings, and finished results while navigating between tools.
 - Conversion and resize output with deduplicated, source-preserving names.
 - Determinate FFmpeg progress and indeterminate progress for other engines.
 - Cancellation tokens, timeouts, partial-output cleanup, and structured errors.
@@ -78,27 +79,28 @@ the primary list. Future features should not be shipped as disabled buttons.
   is read-only.
 - Resize with original-dimension probing, ratio locking, percentage presets, and
   batch execution.
-- Rust unit tests for format parsing, FFmpeg progress parsing, resize validation,
-  resize geometry, and collision-safe output naming.
+- Image optimization with metadata removal by default, an explicit metadata policy,
+  multiple candidate encodes, smallest-result selection, before/after size reporting,
+  source preservation, cancellation, and collision-safe output naming.
+- Optional OxiPNG, jpegoptim, and Gifsicle candidates for lossless format-specific
+  optimization, with ImageMagick retained as the always-available fallback.
 
 ### In progress
 
 - Visual refinement and density consistency across the shared workspace components.
 - Operation-specific file filters and validation across every input route.
 - Alignment between the Rust and TypeScript compatibility matrices.
-- Batch lifecycle details such as per-item status, progress, failure handling, and
-  retry behavior.
+- Native-app review of the new Optimize and expanded queue flows with representative
+  real-world files.
 
 ### Important gaps
 
 - No operation-aware job request shared by Convert and Resize.
 - Required tools are checked globally at launch rather than for the selected task.
 - No user-facing output location or naming controls.
-- The current batch queue is intentionally small and in-memory. It has no per-item
-  progress, retry, skip, folder input, recent jobs, retry history, or persisted
-  preferences yet.
-- Very limited automated coverage: no frontend tests, engine routing tests, command
-  integration tests, or packaged-app smoke test.
+- The current batch queue is in-memory. It has no folder input, recent jobs, retry
+  history, user-selected output policy, or persisted preferences yet.
+- No clean packaged-app smoke pass has been completed for this checkpoint.
 - No clean-machine packaging verification, signing, notarization, or update flow.
 - The README lists broad format support but does not distinguish input-only formats,
   optional engines, and tested conversion pairs.
@@ -118,13 +120,12 @@ Status: active foundation work. Finish before expanding the toolbox broadly.
 - [ ] Expose a backend capability query for an exact operation and input/output pair.
 - [ ] Show missing optional tools before the user starts a job.
 - [x] Drain subprocess output concurrently for long-running engines.
-- [ ] Add table-driven engine-router tests for every advertised conversion pair.
-- [ ] Add representative command tests for image, media, document, and vector paths.
-- [ ] Add a packaged-app smoke test with a minimal `PATH`.
+- [ ] Complete a packaged-app smoke pass with a minimal `PATH`.
 - [ ] Rewrite format documentation from the verified compatibility matrix.
 
 Exit criteria: every option shown in the UI has a working engine or a clear,
-pre-flight dependency message, and representative conversions pass automatically.
+pre-flight dependency message, and representative conversions pass a native-app
+smoke check.
 
 ### Phase 1 — Workspace shell and Resize
 
@@ -138,11 +139,8 @@ Status: in progress.
 - [x] Add locked-ratio editing and 25%, 50%, 75%, and 100% presets.
 - [x] Preserve the original and create a collision-safe resized copy.
 - [x] Reuse conversion progress, cancellation, result, and Finder flows.
-- [ ] Run end-to-end resize checks for JPEG, PNG, WebP, GIF, HEIC, and TIFF.
+- [ ] Run native resize checks for JPEG, PNG, WebP, GIF, HEIC, and TIFF.
 - [ ] Verify cancellation and partial-file cleanup with a large image.
-- [x] Add Rust tests for resize validation, geometry, and output naming.
-- [ ] Add frontend tests for tool switching, file filtering, ratio updates, retry,
-  and reset behavior.
 
 Exit criteria: Resize feels like a complete tool rather than a special conversion
 case and works from drag, browse, paste, Open With, keyboard, success, and error
@@ -154,12 +152,15 @@ Build the most common local image workflows before moving to another domain.
 
 #### Optimize
 
-- Lossless and visually lossless presets.
-- Simple quality control with an estimated intent: Best, Balanced, Smallest.
-- Keep/remove metadata policy.
-- Before/after dimensions and file size.
-- Format-specific engines only when measurements justify them; ImageMagick remains
-  the baseline fallback.
+- [x] Add a simple Optimize workflow to the tool rail.
+- [x] Produce multiple format-aware candidates and keep the smallest valid result.
+- [x] Remove metadata by default with a clear Keep option.
+- [x] Show before/after file size and percentage saved.
+- [x] Preserve the source and use collision-safe output naming.
+- [ ] Consider Best, Balanced, and Smallest presets only if real-world measurements
+  show that the extra choice is useful.
+- [x] Add specialized optimizers as optional candidates without making them required
+  dependencies or exposing engine choices in the interface.
 
 #### Transform
 
@@ -182,12 +183,14 @@ This phase is the platform for every later toolbox area.
 - [x] Add a basic in-memory queue with removal and duplicate prevention.
 - [x] Add per-file conversion targets and sequential batch execution.
 - [x] Add aggregate batch completion results.
-- [ ] Add a configurable queue bound and explicit overflow behavior.
+- [x] Bound the queue at 100 files and show explicit overflow feedback.
 - [ ] Support folders where a tool allows them.
-- Add per-item progress, retry, skip, cancel, and aggregate status.
-- Persist a small recent-jobs list with reopen and reveal actions.
-- Add output folder, suffix, collision policy, and "replace source" safeguards.
-- Persist lightweight user preferences locally.
+- [x] Add per-item progress, retry, skip, cancel, and aggregate status.
+- [x] Retain each tool's uploaded files, queue state, settings, and results while
+  switching between sidebar tabs.
+- [ ] Persist a small recent-jobs list with reopen and reveal actions.
+- [ ] Add output folder, suffix, collision policy, and "replace source" safeguards.
+- [ ] Persist lightweight user preferences locally across app launches.
 
 Exit criteria: a new tool can plug into one job pipeline without rebuilding lifecycle
 logic or UI states.
@@ -257,10 +260,11 @@ run tools whose single and batch flows are already dependable.
 - Keep the tool registry centralized with label, description, accepted inputs,
   dependency requirements, and route/component metadata.
 - Keep shared lifecycle state separate from operation settings.
-- Move from one monolithic store toward job state plus small operation-specific
-  slices when the third tool is introduced.
+- Continue moving from the monolithic store toward shared job state plus small
+  operation-specific slices as more tools are introduced.
 - Do not model Optimize, Transcribe, Inspect, or PDF actions as output formats.
-- Add React tests before expanding the batch UI or adding a third tool.
+- Keep the shared queue runner and session model operation-agnostic as the toolbox
+  expands.
 
 ### Rust
 
@@ -293,26 +297,26 @@ Every tool must pass these gates before it appears in the navigation:
 5. Cancellation, timeout, and partial-output cleanup.
 6. Success, error, retry, reveal, and start-another flows.
 7. Keyboard and drag-and-drop operation.
-8. Rust unit coverage plus one representative end-to-end test.
+8. A representative native-app smoke check.
 9. A packaged-app check, not only terminal development mode.
-10. README support claims updated from tested behavior.
+10. README support claims updated from verified behavior.
 
 ## Current checkpoint
 
-This repository is at a stable product checkpoint suitable for pushing while the
-next implementation area is chosen. Convert and Resize are usable from the shared
-workspace, and both accept real multi-file batches. The queue is functional but is
-not yet the final shared job architecture described in Phase 3.
+This repository is at a useful checkpoint for pushing. Convert, Resize, and Optimize
+all use the shared workspace and real multi-file queue. Per-tool sessions preserve
+uploaded files, settings, item status, and results when the user changes tabs.
 
-No third visible tool should be added until one of these directions is selected:
+The next platform work is capability preflight, a typed `JobRequest`, output folder
+and naming controls, folder input, recent jobs, and preferences that survive an app
+restart. The next image-tool decision is whether to build crop/rotate or reusable
+output presets first.
 
-1. **Reliability first:** capability preflight, conversion-pair coverage, Resize
-   end-to-end checks, and packaged-app verification.
-2. **Job platform first:** typed `JobRequest`, per-item progress and failure handling,
-   output policy, recent jobs, and preferences.
-3. **Image workshop first:** Optimize as the next tool, followed by crop, rotate,
-   metadata removal, and reusable output presets.
+For video, keep the product narrower than HandBrake: clear presets for dimensions,
+codec, and file-size/quality reduction, followed by focused trim, audio, thumbnail,
+and subtitle utilities. PDF, video, image, and general file utilities should be
+prioritized together after this checkpoint is reviewed.
 
-The recommended order remains reliability, shared jobs, then Optimize. This keeps
-new tools from duplicating lifecycle code and prevents the visible compatibility
-matrix from getting ahead of tested behavior.
+The reference-led circular conversion icon is selected and integrated into the
+complete Tauri platform icon set. Its sole 1024px source master and generation brief
+are documented in `design/icon-concepts/README.md`.

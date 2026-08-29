@@ -23,7 +23,12 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
   const handleClick = useCallback(async () => {
     const selected = await open({
       multiple: true,
-      title: operation === "resize" ? "Choose images to resize" : "Choose files to convert",
+      title:
+        operation === "convert"
+          ? "Choose files to convert"
+          : operation === "resize"
+            ? "Choose images to resize"
+            : "Choose images to optimize",
       filters: getOperationDialogFilter(operation),
     });
 
@@ -32,8 +37,8 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
     const supported = paths.filter((path) => isPathSupportedForOperation(path, operation));
     if (supported.length === 0) {
       setRejection(
-        operation === "resize"
-          ? "Resize works with raster images"
+        operation !== "convert"
+          ? `${operation === "resize" ? "Resize" : "Optimize"} works with raster images`
           : "Those file types are not supported",
       );
       return;
@@ -79,7 +84,7 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
         {isDragging ? "Release to add file" : meta.dropLabel}
       </span>
       <span className="mt-2 max-w-64 text-sm leading-relaxed text-[#92939d]">
-        {operation === "resize"
+        {operation !== "convert"
           ? "PNG, JPEG, WebP, GIF, HEIC, TIFF, BMP, and AVIF."
           : "Images, video, audio, documents, and vectors."}
       </span>

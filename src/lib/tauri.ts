@@ -36,6 +36,19 @@ export async function resizeImage(
   });
 }
 
+/** Optimize an image while preserving the original file. */
+export async function optimizeImage(
+  inputPath: string,
+  keepMetadata: boolean,
+  jobId: string,
+): Promise<ConversionResult> {
+  return invoke<ConversionResult>("optimize_image", {
+    inputPath,
+    keepMetadata,
+    jobId,
+  });
+}
+
 /** Cancel an in-progress conversion. */
 export async function cancelConversion(jobId: string): Promise<void> {
   return invoke<void>("cancel_conversion", { jobId });

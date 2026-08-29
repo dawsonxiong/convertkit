@@ -237,7 +237,7 @@ async fn convert_to_gif(
     );
 
     // Pass 2: encode with palette.
-    let filter = format!("fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse");
+    let filter = "fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse";
     let status = run_ffmpeg_simple(
         &[
             "-i",
@@ -245,7 +245,7 @@ async fn convert_to_gif(
             "-i",
             &palette.to_string_lossy(),
             "-lavfi",
-            &filter,
+            filter,
             "-y",
             &output.to_string_lossy(),
         ],
@@ -323,8 +323,7 @@ async fn can_copy_streams(path: &Path, target: Format) -> bool {
                 && codecs.iter().any(|c| ["aac", "mp3"].contains(c))
         }
         Format::Mov => {
-            codecs.iter().any(|c| ["h264", "hevc"].contains(c))
-                && codecs.iter().any(|c| *c == "aac")
+            codecs.iter().any(|c| ["h264", "hevc"].contains(c)) && codecs.contains(&"aac")
         }
         Format::Mkv => true, // MKV accepts almost anything
         _ => false,

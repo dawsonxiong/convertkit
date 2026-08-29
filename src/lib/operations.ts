@@ -21,6 +21,7 @@ const CONVERT_EXTENSIONS = SUPPORTED_INPUT_EXTENSIONS_LIST.filter(
 const RESIZE_EXTENSIONS = CONVERT_EXTENSIONS.filter(
   (extension) => FORMAT_INFO[normalizeExtension(extension)]?.category === "image",
 );
+const OPTIMIZE_EXTENSIONS = RESIZE_EXTENSIONS;
 
 export const OPERATIONS: Record<Operation, OperationMeta> = {
   convert: {
@@ -39,6 +40,14 @@ export const OPERATIONS: Record<Operation, OperationMeta> = {
     categories: ["image"],
     extensions: RESIZE_EXTENSIONS,
   },
+  optimize: {
+    id: "optimize",
+    label: "Optimize image",
+    dropLabel: "Drop images here",
+    actionLabel: "Optimize",
+    categories: ["image"],
+    extensions: OPTIMIZE_EXTENSIONS,
+  },
 };
 
 export function isPathSupportedForOperation(path: string, operation: Operation): boolean {
@@ -56,7 +65,7 @@ export function isCategorySupportedForOperation(
 export function getOperationDialogFilter(operation: Operation) {
   return [
     {
-      name: operation === "resize" ? "Images" : "Supported files",
+      name: operation === "convert" ? "Supported files" : "Images",
       extensions: OPERATIONS[operation].extensions,
     },
   ];

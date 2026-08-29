@@ -40,9 +40,27 @@ function ResizeIcon() {
   );
 }
 
+function OptimizeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 3H3v5M16 21h5v-5M3 8l5-5M21 16l-5 5" />
+      <path d="M14 5h5v5M10 19H5v-5M19 5l-5 5M5 19l5-5" />
+    </svg>
+  );
+}
+
 const ICONS: Record<Operation, () => React.JSX.Element> = {
   convert: ConvertIcon,
   resize: ResizeIcon,
+  optimize: OptimizeIcon,
 };
 
 export function ToolNav({ operation, disabled, onChange }: ToolNavProps) {
@@ -50,9 +68,11 @@ export function ToolNav({ operation, disabled, onChange }: ToolNavProps) {
     <aside className="flex w-48 shrink-0 flex-col border-r border-[#3b3d46] bg-[#131315] px-4 pb-4">
       <div className="h-10 shrink-0" data-tauri-drag-region />
 
-      <div className="mb-6 flex items-center gap-2 bg-[#e5e1e4] px-3 py-2">
-        <img src={appIcon} alt="" className="size-9 shrink-0" />
-        <p className="text-lg font-semibold leading-none text-[#0e0e10]">ConvertKit</p>
+      <div className="mb-5 flex items-center gap-2 py-2">
+        <img src={appIcon} alt="" className="size-[38px] shrink-0" />
+        <p className="brand-wordmark text-xl font-semibold leading-none text-[#f2f2f4]">
+          ConvertKit
+        </p>
       </div>
 
       <nav className="flex flex-col gap-2.5" aria-label="File tools">

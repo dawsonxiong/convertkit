@@ -35,6 +35,22 @@ export interface ConversionError {
   detail: Record<string, string>;
 }
 
+export type QueueItemStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+
+export interface QueueItemState {
+  status: QueueItemStatus;
+  progress: number;
+  stage: string;
+  result: ConversionResult | null;
+  error: ConversionError | null;
+}
+
 export interface DependencyStatus {
   name: string;
   installed: boolean;
@@ -44,4 +60,4 @@ export interface DependencyStatus {
 
 export type AppState = "empty" | "loaded" | "converting" | "done" | "error";
 
-export type Operation = "convert" | "resize";
+export type Operation = "convert" | "resize" | "optimize";

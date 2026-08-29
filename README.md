@@ -1,7 +1,7 @@
 # ConvertKit
 
-A private, offline file workspace for macOS. Convert media and documents or resize
-images from one focused dark-mode interface.
+A private, offline file workspace for macOS. Convert media and documents, resize
+images, or optimize image file size from one focused dark-mode interface.
 
 Built with Tauri v2, React, and Rust.
 
@@ -15,6 +15,10 @@ Built with Tauri v2, React, and Rust.
 | Convert audio | MP3, WAV, AAC, FLAC, OGG, M4A | Other audio formats |
 | Convert documents | DOCX, HTML, Markdown, EPUB, TXT | Supported document formats, including PDF |
 | Resize image | Raster image formats | A resized copy in the original format |
+| Optimize image | Raster image formats | A smaller copy in the original format |
+
+All three tools support multi-file queues. Each tool keeps its uploaded files,
+settings, queue status, and results when you switch to another sidebar tab and back.
 
 Some conversions need one of the optional engines below.
 
@@ -30,9 +34,14 @@ Optional tools (installed on demand):
 
 ```
 brew install pandoc resvg tectonic
+brew install oxipng jpegoptim gifsicle
 brew install --cask libreoffice
 cargo install vtracer
 ```
+
+Optimize always has an ImageMagick fallback. When available, OxiPNG, jpegoptim,
+and Gifsicle are also tried for their matching formats, and the smallest valid
+candidate is kept.
 
 The app checks for missing tools on launch and prompts you to install them.
 

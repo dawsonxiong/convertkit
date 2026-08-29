@@ -231,8 +231,7 @@ mod tests {
             directory.path().join("photo (resized).png")
         );
 
-        std::fs::write(directory.path().join("photo (resized).png"), b"existing")
-            .expect("fixture");
+        std::fs::write(directory.path().join("photo (resized).png"), b"existing").expect("fixture");
         assert_eq!(
             resized_output_path(&input),
             directory.path().join("photo (resized 1).png")

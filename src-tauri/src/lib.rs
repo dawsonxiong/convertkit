@@ -5,7 +5,7 @@ pub mod formats;
 pub mod progress;
 
 use commands::{
-    cancel_conversion, check_dependencies, convert, get_file_info, get_opened_file,
+    cancel_conversion, check_dependencies, convert, get_file_info, get_opened_file, optimize_image,
     read_file_thumbnail, resize_image, reveal_in_finder, save_clipboard_image,
 };
 use std::collections::HashMap;
@@ -64,6 +64,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             convert,
             resize_image,
+            optimize_image,
             cancel_conversion,
             check_dependencies,
             get_file_info,

@@ -61,6 +61,11 @@ button {
   background: #131315;
 }
 
+.brand-wordmark {
+  font-family: "Inclusive Sans Variable", "Avenir Next", sans-serif;
+  letter-spacing: -0.02em;
+}
+
 .workspace-card {
   border: 1px solid #3b3d46;
   border-radius: 0;

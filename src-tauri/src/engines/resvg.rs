@@ -38,13 +38,10 @@ impl ConversionEngine for ResvgEngine {
         );
 
         // Default to 2x scale for retina-friendly output.
+        let input_arg = input.to_string_lossy();
+        let output_arg = output.to_string_lossy();
         let mut child = tool_command("resvg")
-            .args([
-                &input.to_string_lossy().to_string(),
-                &output.to_string_lossy().to_string(),
-                "--dpi",
-                "192",
-            ])
+            .args([input_arg.as_ref(), output_arg.as_ref(), "--dpi", "192"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()

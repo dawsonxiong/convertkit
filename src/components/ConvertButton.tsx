@@ -12,12 +12,16 @@ export function ConvertButton({ onClick, mode }: ConvertButtonProps) {
   const operation = useAppStore((s) => s.operation);
   const resizeWidth = useAppStore((s) => s.resizeWidth);
   const resizeHeight = useAppStore((s) => s.resizeHeight);
+  const actionLabel =
+    operation === "resize" ? "Resize" : operation === "optimize" ? "Optimize" : "Convert";
   const isDisabled =
     mode === "convert" &&
     (files.length === 0 ||
       (operation === "resize"
         ? !resizeWidth || !resizeHeight
-        : files.some((file) => !outputFormats[file.path])));
+        : operation === "convert"
+          ? files.some((file) => !outputFormats[file.path])
+          : false));
 
   return (
     <motion.button
@@ -45,16 +49,10 @@ export function ConvertButton({ onClick, mode }: ConvertButtonProps) {
           </svg>
           Cancel
         </>
-      ) : operation === "resize" ? (
-        files.length > 1 ? (
-          `Resize ${files.length} files`
-        ) : (
-          "Resize"
-        )
       ) : files.length > 1 ? (
-        `Convert ${files.length} files`
+        `${actionLabel} ${files.length} files`
       ) : (
-        "Convert"
+        actionLabel
       )}
     </motion.button>
   );
