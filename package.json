@@ -1,25 +1,29 @@
 {
   "name": "convertkit",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
+    "native:helpers": "sh scripts/build-native-helpers.sh",
     "dev": "vite",
     "build": "tsgo -config tsconfig.json && vite build",
     "check": "tsgo -config tsconfig.json",
     "lint": "oxlint -c .oxlintrc.json src/",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "format": "oxfmt -c .oxfmtrc.json --write src/",
     "icons:generate": "sh scripts/generate-icons.sh",
+    "release:check": "sh scripts/release-macos.sh --check",
+    "release:doctor": "sh scripts/release-macos.sh --doctor",
+    "package:smoke:apple-silicon": "sh scripts/check-apple-silicon-package.sh",
+    "release:macos": "pnpm package:smoke:apple-silicon && sh scripts/release-macos.sh release",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
-    "@crabnebula/tauri-plugin-drag": "^2.1.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/inclusive-sans": "^5.3.0",
     "@tauri-apps/api": "^2.3.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
-    "@tauri-apps/plugin-shell": "^2.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.3"

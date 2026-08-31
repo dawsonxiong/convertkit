@@ -67,7 +67,7 @@ export function ResizePanel() {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
         <div className="min-w-0">
-          <p className="whitespace-nowrap text-[11px] font-medium text-white/80">Dimensions</p>
+          <p className="whitespace-nowrap text-[13px] font-semibold text-white/85">Dimensions</p>
           <p className="mt-1 text-[10px] leading-4 text-white/40">
             {originalWidth && originalHeight
               ? `Original ${originalWidth.toLocaleString()} × ${originalHeight.toLocaleString()} px`
@@ -78,11 +78,7 @@ export function ResizePanel() {
           type="button"
           onClick={toggleAspect}
           aria-pressed={preserveAspect}
-          className={`flex h-7 items-center gap-1.5 whitespace-nowrap border px-2 text-[10px] font-medium ${
-            preserveAspect
-              ? "border-[#6f7fa7] bg-[#20283a] text-[#b0c6ff]"
-              : "border-[#44464f] bg-[#0e0e10] text-[#92939d] hover:text-[#e5e1e4]"
-          }`}
+          className="choice-button whitespace-nowrap"
         >
           <svg
             className="size-3"
@@ -113,11 +109,8 @@ export function ResizePanel() {
               key={percent}
               type="button"
               onClick={() => applyScale(percent)}
-              className={`h-7 border text-[10px] font-medium ${
-                activeScale === percent
-                  ? "border-[#b0c6ff] bg-[#20283a] text-[#b0c6ff]"
-                  : "border-[#44464f] bg-[#0e0e10] text-[#92939d] hover:border-[#696b75] hover:text-[#e5e1e4]"
-              }`}
+              aria-pressed={activeScale === percent}
+              className="choice-button"
             >
               {percent}%
             </button>

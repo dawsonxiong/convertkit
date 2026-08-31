@@ -26,7 +26,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
           <button
             type="button"
             onClick={() => this.setState({ error: null })}
-            className="mt-2 px-4 py-1.5 text-xs rounded-[var(--radius-button)] bg-accent hover:bg-accent-hover text-white"
+            className="secondary-button mt-2"
           >
             Try again
           </button>

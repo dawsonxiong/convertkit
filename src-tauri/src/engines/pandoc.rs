@@ -1,7 +1,12 @@
+use std::time::Duration;
+
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::process::{run_process, ProcessMessages};
+use crate::engines::{
+    tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
+};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
@@ -35,6 +40,7 @@ impl ConversionEngine for PandocEngine {
         let _ = app.emit(
             "conversion-progress",
             ProgressPayload {
+                job_id: request.job_id.clone(),
                 percent: -1,
                 stage: "Converting document…".into(),
             },
@@ -54,60 +60,28 @@ impl ConversionEngine for PandocEngine {
 
         args.extend(["-o".into(), output.to_string_lossy().into()]);
 
-        let mut child = tool_command("pandoc")
-            .args(&args)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| ConversionError::ProcessFailed {
-                message: format!("Failed to spawn pandoc: {e}"),
-                stderr: String::new(),
-                exit_code: None,
-            })?;
+        let mut command = tool_command("pandoc");
+        command.args(&args);
+        run_process(
+            command,
+            cancel_token,
+            Duration::from_secs(10 * 60),
+            &[output],
+            ProcessMessages {
+                start: "Failed to start Pandoc",
+                wait: "Pandoc process could not be awaited",
+                failure: "Pandoc conversion failed",
+            },
+        )
+        .await?;
 
-        let stderr = child.stderr.take();
-        let stderr_handle = tokio::spawn(async move {
-            match stderr {
-                Some(mut stderr) => {
-                    use tokio::io::AsyncReadExt;
-                    let mut output = String::new();
-                    let _ = stderr.read_to_string(&mut output).await;
-                    output
-                }
-                None => String::new(),
-            }
-        });
-
-        let status = tokio::select! {
-            result = child.wait() => {
-                result.map_err(|e| ConversionError::ProcessFailed {
-                    message: format!("pandoc error: {e}"),
-                    stderr: String::new(),
-                    exit_code: None,
-                })?
-            }
-            _ = cancel_token.cancelled() => {
-                let _ = child.kill().await;
-                super::cleanup_partial(output);
-                return Err(ConversionError::Cancelled);
-            }
-        };
-
-        let stderr = stderr_handle.await.unwrap_or_default();
-        if !status.success() {
-            super::cleanup_partial(output);
-            return Err(ConversionError::ProcessFailed {
-                message: "Pandoc conversion failed".into(),
-                stderr,
-                exit_code: status.code(),
-            });
-        }
-
-        let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
+        let output_size = verification::nonempty_file(output)?;
         Ok(ConversionResult {
             output_path: output.to_string_lossy().into(),
-            output_size: meta.len(),
+            output_paths: Vec::new(),
+            output_size,
             duration_ms: 0,
+            undo_manifest: None,
         })
     }
 }

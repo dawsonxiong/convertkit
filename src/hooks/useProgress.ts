@@ -14,7 +14,7 @@ export function useProgress() {
 
     const setup = async () => {
       unlisten = await listen<ProgressPayload>("conversion-progress", (event) => {
-        updateProgress(event.payload.percent, event.payload.stage);
+        updateProgress(event.payload.jobId, event.payload.percent, event.payload.stage);
       });
     };
 

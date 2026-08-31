@@ -1,12 +1,8 @@
 import { useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getFileInfo } from "../lib/tauri";
-import {
-  getOperationDialogFilter,
-  isPathSupportedForOperation,
-  OPERATIONS,
-} from "../lib/operations";
+import { getOperationDialogFilter, OPERATIONS } from "../lib/operations";
 import { useAppStore } from "../store/useAppStore";
+import { useAddPaths } from "../hooks/useAddPaths";
 
 interface DropZoneProps {
   isDragging: boolean;
@@ -15,51 +11,38 @@ interface DropZoneProps {
 
 export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
   const operation = useAppStore((store) => store.operation);
-  const addFiles = useAppStore((store) => store.addFiles);
-  const setRejection = useAppStore((store) => store.setRejection);
+  const addPaths = useAddPaths();
   const meta = OPERATIONS[operation];
 
-  const handleClick = useCallback(async () => {
+  const browseFiles = useCallback(async () => {
+    if (disabled) return;
     const selected = await open({
       multiple: true,
-      title:
-        operation === "convert"
-          ? "Choose files to convert"
-          : operation === "resize"
-            ? "Choose images to resize"
-            : "Choose images to optimize",
+      title: meta.fileDialogTitle,
       filters: getOperationDialogFilter(operation),
     });
 
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
-    const supported = paths.filter((path) => isPathSupportedForOperation(path, operation));
-    if (supported.length === 0) {
-      setRejection(
-        operation !== "convert"
-          ? `${operation === "resize" ? "Resize" : "Optimize"} works with raster images`
-          : "Those file types are not supported",
-      );
-      return;
-    }
+    await addPaths(paths);
+  }, [addPaths, disabled, meta.fileDialogTitle, operation]);
 
-    try {
-      addFiles(await Promise.all(supported.map(getFileInfo)));
-      if (supported.length < paths.length) {
-        setRejection(`${paths.length - supported.length} unsupported file(s) skipped`);
-      }
-    } catch (error) {
-      console.error("Failed to get file info:", error);
-      setRejection("One or more files could not be opened");
-    }
-  }, [addFiles, operation, setRejection]);
+  const browseFolder = useCallback(async () => {
+    if (disabled) return;
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: meta.folderDialogTitle,
+    });
+    if (typeof selected === "string") await addPaths([selected]);
+  }, [addPaths, disabled, meta.folderDialogTitle]);
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={disabled}
-      className={`drop-grid group relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden border border-dashed p-6 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+    <div
+      aria-disabled={disabled}
+      className={`drop-grid relative flex min-h-[360px] flex-col items-center justify-center overflow-hidden border border-dashed p-6 text-center transition-colors ${
+        disabled ? "pointer-events-none opacity-60" : ""
+      } ${
         isDragging
           ? "border-[#b0c6ff] bg-[#b0c6ff]/[0.05]"
           : "border-[#44464f] hover:border-[#696b75]"
@@ -80,16 +63,29 @@ export function DropZone({ isDragging, disabled = false }: DropZoneProps) {
       </svg>
 
       <span className="mt-5 text-xl font-semibold text-[#e5e1e4]">
-        {isDragging ? "Release to add files" : meta.dropLabel}
+        {isDragging ? "Release to add files or folders" : meta.dropLabel}
       </span>
       <span className="mt-2 max-w-64 text-sm leading-relaxed text-[#92939d]">
-        {operation !== "convert"
-          ? "PNG, JPEG, WebP, GIF, HEIC, TIFF, BMP, and AVIF."
-          : "Images, video, audio, and documents."}
+        {meta.dropDescription}
       </span>
-      <span className="mt-5 flex h-8 items-center border border-[#44464f] bg-[#201f22] px-4 text-[11px] font-medium text-[#e5e1e4] group-hover:bg-[#2a2a2c]">
-        Browse files
-      </span>
-    </button>
+      <div className="mt-5 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={browseFiles}
+          disabled={disabled}
+          className="secondary-button"
+        >
+          Browse files
+        </button>
+        <button
+          type="button"
+          onClick={browseFolder}
+          disabled={disabled}
+          className="secondary-button"
+        >
+          Choose folder
+        </button>
+      </div>
+    </div>
   );
 }

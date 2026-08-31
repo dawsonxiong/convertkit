@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 /// Payload emitted via Tauri events to report conversion progress.
 ///
 /// `percent` is 0..=100 for determinate progress, or -1 for indeterminate.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProgressPayload {
+    pub job_id: String,
     pub percent: i32,
     pub stage: String,
 }
@@ -39,6 +41,45 @@ pub fn parse_ffmpeg_progress(line: &str, total_duration_ms: u64) -> Option<i32> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serializes_and_deserializes_the_emitting_job_id() {
+        let payload = ProgressPayload {
+            job_id: "job-123".into(),
+            percent: 42,
+            stage: "Working".into(),
+        };
+
+        let json = serde_json::to_value(&payload).expect("serialize progress payload");
+        assert_eq!(json["jobId"], "job-123");
+        assert_eq!(json["percent"], 42);
+        assert_eq!(json["stage"], "Working");
+        assert!(json.get("job_id").is_none());
+
+        let decoded: ProgressPayload =
+            serde_json::from_value(json).expect("deserialize progress payload");
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn keeps_overlapping_job_payloads_distinct() {
+        let first = ProgressPayload {
+            job_id: "job-a".into(),
+            percent: 25,
+            stage: "Encoding".into(),
+        };
+        let second = ProgressPayload {
+            job_id: "job-b".into(),
+            percent: 25,
+            stage: "Encoding".into(),
+        };
+
+        let first_json = serde_json::to_value(first).expect("serialize first job");
+        let second_json = serde_json::to_value(second).expect("serialize second job");
+        assert_eq!(first_json["jobId"], "job-a");
+        assert_eq!(second_json["jobId"], "job-b");
+        assert_ne!(first_json["jobId"], second_json["jobId"]);
+    }
 
     #[test]
     fn parses_valid_out_time_ms() {

@@ -1,7 +1,12 @@
+use std::time::Duration;
+
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::process::{run_process, ProcessMessages};
+use crate::engines::{
+    tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
+};
 use crate::error::ConversionError;
 use crate::formats::Format;
 use crate::progress::ProgressPayload;
@@ -14,9 +19,9 @@ impl ConversionEngine for LibreOfficeEngine {
     }
 
     fn supports(&self, input: Format, output: Format) -> bool {
-        // LibreOffice handles DOCX → PDF (and PDF → DOCX, though quality varies).
-        (input == Format::Docx && output == Format::Pdf)
-            || (input == Format::Pdf && output == Format::Docx)
+        // PDF → DOCX is intentionally excluded until its output is reliable
+        // enough to advertise and verify as a supported conversion.
+        input == Format::Docx && output == Format::Pdf
     }
 
     async fn convert(
@@ -37,79 +42,36 @@ impl ConversionEngine for LibreOfficeEngine {
         let _ = app.emit(
             "conversion-progress",
             ProgressPayload {
+                job_id: request.job_id.clone(),
                 percent: -1,
                 stage: "Converting with LibreOffice…".into(),
             },
         );
 
-        let convert_to = match request.output_format {
-            Format::Pdf => "pdf",
-            Format::Docx => "docx",
-            _ => "pdf",
-        };
+        let convert_to = "pdf";
 
-        let mut cmd = tool_command("soffice");
-        cmd.arg("--headless");
-
-        // PDF inputs need an explicit import filter so LibreOffice opens them
-        // as editable Writer documents instead of Draw pages.
-        if request.input_format == Format::Pdf {
-            cmd.arg("--infilter=writer_pdf_import");
-        }
-
-        let mut child = cmd
+        let mut command = tool_command("soffice");
+        command
+            .arg("--headless")
             .args([
                 "--convert-to",
                 convert_to,
                 "--outdir",
                 &out_dir.to_string_lossy(),
             ])
-            .arg(input)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| ConversionError::ProcessFailed {
-                message: format!("Failed to spawn soffice: {e}"),
-                stderr: String::new(),
-                exit_code: None,
-            })?;
-
-        let stderr = child.stderr.take();
-        let stderr_handle = tokio::spawn(async move {
-            match stderr {
-                Some(mut stderr) => {
-                    use tokio::io::AsyncReadExt;
-                    let mut output = String::new();
-                    let _ = stderr.read_to_string(&mut output).await;
-                    output
-                }
-                None => String::new(),
-            }
-        });
-
-        let status = tokio::select! {
-            result = child.wait() => {
-                result.map_err(|e| ConversionError::ProcessFailed {
-                    message: format!("soffice error: {e}"),
-                    stderr: String::new(),
-                    exit_code: None,
-                })?
-            }
-            _ = cancel_token.cancelled() => {
-                let _ = child.kill().await;
-                super::cleanup_partial(output);
-                return Err(ConversionError::Cancelled);
-            }
-        };
-
-        let stderr = stderr_handle.await.unwrap_or_default();
-        if !status.success() {
-            return Err(ConversionError::ProcessFailed {
-                message: "LibreOffice conversion failed".into(),
-                stderr,
-                exit_code: status.code(),
-            });
-        }
+            .arg(input);
+        run_process(
+            command,
+            cancel_token,
+            Duration::from_secs(10 * 60),
+            &[],
+            ProcessMessages {
+                start: "Failed to start LibreOffice",
+                wait: "LibreOffice process could not be awaited",
+                failure: "LibreOffice conversion failed",
+            },
+        )
+        .await?;
 
         // LibreOffice controls its own filename, so isolate it in a temporary
         // directory and only move the verified result to the requested path.
@@ -154,11 +116,13 @@ impl ConversionEngine for LibreOfficeEngine {
                 exit_code: None,
             })?;
 
-        let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
+        let output_size = verification::nonempty_file(output)?;
         Ok(ConversionResult {
             output_path: output.to_string_lossy().into(),
-            output_size: meta.len(),
+            output_paths: Vec::new(),
+            output_size,
             duration_ms: 0,
+            undo_manifest: None,
         })
     }
 }

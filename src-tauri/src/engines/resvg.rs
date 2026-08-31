@@ -1,7 +1,12 @@
+use std::time::Duration;
+
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-use crate::engines::{tool_command, ConversionEngine, ConversionRequest, ConversionResult};
+use crate::engines::process::{run_process, ProcessMessages};
+use crate::engines::{
+    tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
+};
 use crate::error::ConversionError;
 use crate::formats::Format;
 use crate::progress::ProgressPayload;
@@ -32,6 +37,7 @@ impl ConversionEngine for ResvgEngine {
         let _ = app.emit(
             "conversion-progress",
             ProgressPayload {
+                job_id: request.job_id.clone(),
                 percent: -1,
                 stage: "Rendering SVG…".into(),
             },
@@ -40,60 +46,28 @@ impl ConversionEngine for ResvgEngine {
         // Default to 2x scale for retina-friendly output.
         let input_arg = input.to_string_lossy();
         let output_arg = output.to_string_lossy();
-        let mut child = tool_command("resvg")
-            .args([input_arg.as_ref(), output_arg.as_ref(), "--dpi", "192"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| ConversionError::ProcessFailed {
-                message: format!("Failed to spawn resvg: {e}"),
-                stderr: String::new(),
-                exit_code: None,
-            })?;
+        let mut command = tool_command("resvg");
+        command.args([input_arg.as_ref(), output_arg.as_ref(), "--dpi", "192"]);
+        run_process(
+            command,
+            cancel_token,
+            Duration::from_secs(10 * 60),
+            &[output],
+            ProcessMessages {
+                start: "Failed to start resvg",
+                wait: "resvg process could not be awaited",
+                failure: "resvg rendering failed",
+            },
+        )
+        .await?;
 
-        let stderr = child.stderr.take();
-        let stderr_handle = tokio::spawn(async move {
-            match stderr {
-                Some(mut stderr) => {
-                    use tokio::io::AsyncReadExt;
-                    let mut output = String::new();
-                    let _ = stderr.read_to_string(&mut output).await;
-                    output
-                }
-                None => String::new(),
-            }
-        });
-
-        let status = tokio::select! {
-            result = child.wait() => {
-                result.map_err(|e| ConversionError::ProcessFailed {
-                    message: format!("resvg error: {e}"),
-                    stderr: String::new(),
-                    exit_code: None,
-                })?
-            }
-            _ = cancel_token.cancelled() => {
-                let _ = child.kill().await;
-                super::cleanup_partial(output);
-                return Err(ConversionError::Cancelled);
-            }
-        };
-
-        let stderr = stderr_handle.await.unwrap_or_default();
-        if !status.success() {
-            super::cleanup_partial(output);
-            return Err(ConversionError::ProcessFailed {
-                message: "resvg rendering failed".into(),
-                stderr,
-                exit_code: status.code(),
-            });
-        }
-
-        let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
+        let output_size = verification::nonempty_file(output)?;
         Ok(ConversionResult {
             output_path: output.to_string_lossy().into(),
-            output_size: meta.len(),
+            output_paths: Vec::new(),
+            output_size,
             duration_ms: 0,
+            undo_manifest: None,
         })
     }
 }

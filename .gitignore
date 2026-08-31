@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 src-tauri/target/
+src-tauri/binaries/
+src-tauri/runtime/whisper/
+src-tauri/gen/
 
 # Environment
 .env
@@ -16,6 +19,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 

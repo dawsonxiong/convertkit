@@ -50,6 +50,37 @@ pub enum FileCategory {
 }
 
 impl Format {
+    /// Every format understood by the conversion router.
+    pub const ALL: [Self; 27] = [
+        Self::Jpg,
+        Self::Png,
+        Self::WebP,
+        Self::Tiff,
+        Self::Bmp,
+        Self::Gif,
+        Self::Ico,
+        Self::Avif,
+        Self::Heic,
+        Self::Mp4,
+        Self::Mov,
+        Self::WebM,
+        Self::Mkv,
+        Self::Avi,
+        Self::Mp3,
+        Self::Wav,
+        Self::Aac,
+        Self::Flac,
+        Self::Ogg,
+        Self::M4a,
+        Self::Pdf,
+        Self::Docx,
+        Self::Html,
+        Self::Md,
+        Self::Epub,
+        Self::Txt,
+        Self::Svg,
+    ];
+
     /// Which broad category this format belongs to.
     pub fn category(&self) -> FileCategory {
         match self {
@@ -129,7 +160,7 @@ impl Format {
             "mkv" => Some(Self::Mkv),
             "avi" => Some(Self::Avi),
             "mp3" => Some(Self::Mp3),
-            "wav" => Some(Self::Wav),
+            "wav" | "wave" => Some(Self::Wav),
             "aac" => Some(Self::Aac),
             "flac" => Some(Self::Flac),
             "ogg" | "oga" => Some(Self::Ogg),
@@ -163,6 +194,9 @@ impl Format {
                 // Remove self from targets
                 targets.retain(|f| f != self);
                 targets.push(Self::Svg);
+                if matches!(self, Self::Jpg | Self::Png) {
+                    targets.push(Self::Pdf);
+                }
                 targets
             }
             FileCategory::Video => {
@@ -297,6 +331,7 @@ mod tests {
         assert_eq!(Format::from_extension("markdown"), Some(Format::Md));
         assert_eq!(Format::from_extension("heif"), Some(Format::Heic));
         assert_eq!(Format::from_extension("oga"), Some(Format::Ogg));
+        assert_eq!(Format::from_extension("wave"), Some(Format::Wav));
         assert_eq!(Format::from_extension("m4v"), Some(Format::Mp4));
         assert_eq!(Format::from_extension("text"), Some(Format::Txt));
     }

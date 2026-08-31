@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
+use crate::engines::process::{capture_output, finish_output, run_process, ProcessMessages};
 use crate::engines::{
     resolve_tool, tool_command, ConversionEngine, ConversionRequest, ConversionResult,
 };
@@ -13,6 +14,8 @@ use crate::formats::{FileCategory, Format};
 use crate::progress::{parse_ffmpeg_progress, ProgressPayload};
 
 pub struct FfmpegEngine;
+
+const FFMPEG_CONVERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4 * 60 * 60);
 
 impl ConversionEngine for FfmpegEngine {
     fn required_tool(&self) -> &'static str {
@@ -42,7 +45,7 @@ impl ConversionEngine for FfmpegEngine {
 
         // Special path for GIF (two-pass palette optimisation).
         if request.output_format == Format::Gif {
-            return convert_to_gif(input, output, &app, cancel_token).await;
+            return convert_to_gif(input, output, &request.job_id, &app, cancel_token).await;
         }
 
         // Probe input duration for progress reporting.
@@ -57,6 +60,7 @@ impl ConversionEngine for FfmpegEngine {
             let _ = app.emit(
                 "conversion-progress",
                 ProgressPayload {
+                    job_id: request.job_id.clone(),
                     percent: -1,
                     stage: "Remuxing (no re-encode)…".into(),
                 },
@@ -70,6 +74,7 @@ impl ConversionEngine for FfmpegEngine {
             let _ = app.emit(
                 "conversion-progress",
                 ProgressPayload {
+                    job_id: request.job_id.clone(),
                     percent: if duration_ms > 0 { 0 } else { -1 },
                     stage: "Extracting audio…".into(),
                 },
@@ -81,6 +86,7 @@ impl ConversionEngine for FfmpegEngine {
             let _ = app.emit(
                 "conversion-progress",
                 ProgressPayload {
+                    job_id: request.job_id.clone(),
                     percent: if duration_ms > 0 { 0 } else { -1 },
                     stage: "Encoding…".into(),
                 },
@@ -98,10 +104,13 @@ impl ConversionEngine for FfmpegEngine {
             tool: "ffmpeg".into(),
             install_hint: "Install ffmpeg with Homebrew".into(),
         })?;
-        let mut child = tokio::process::Command::new(ffmpeg)
+        let mut command = tokio::process::Command::new(ffmpeg);
+        command
             .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = command
             .spawn()
             .map_err(|e| ConversionError::ProcessFailed {
                 message: format!("Failed to spawn ffmpeg: {e}"),
@@ -112,6 +121,7 @@ impl ConversionEngine for FfmpegEngine {
         // Stream progress from stdout.
         let stdout = child.stdout.take();
         let app2 = app.clone();
+        let progress_job_id = request.job_id.clone();
         let progress_handle = tokio::spawn(async move {
             if let Some(stdout) = stdout {
                 let reader = BufReader::new(stdout);
@@ -121,6 +131,7 @@ impl ConversionEngine for FfmpegEngine {
                         let _ = app2.emit(
                             "conversion-progress",
                             ProgressPayload {
+                                job_id: progress_job_id.clone(),
                                 percent: pct,
                                 stage: "Encoding…".into(),
                             },
@@ -130,53 +141,70 @@ impl ConversionEngine for FfmpegEngine {
             }
         });
 
-        let stderr = child.stderr.take();
-        let stderr_handle = tokio::spawn(async move {
-            match stderr {
-                Some(stderr) => {
-                    let mut reader = BufReader::new(stderr);
-                    let mut output = String::new();
-                    let _ = tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut output).await;
-                    output
-                }
-                None => String::new(),
-            }
-        });
+        let stderr_handle = capture_output(child.stderr.take());
 
-        let status = tokio::select! {
-            result = child.wait() => {
-                result.map_err(|e| ConversionError::ProcessFailed {
-                    message: format!("ffmpeg process error: {e}"),
-                    stderr: String::new(),
-                    exit_code: None,
-                })?
-            }
-            _ = cancel_token.cancelled() => {
+        enum ProcessExit {
+            Finished(Result<std::process::ExitStatus, std::io::Error>),
+            Cancelled,
+            TimedOut,
+        }
+        let exit = tokio::select! {
+            result = child.wait() => ProcessExit::Finished(result),
+            _ = cancel_token.cancelled() => ProcessExit::Cancelled,
+            _ = tokio::time::sleep(FFMPEG_CONVERSION_TIMEOUT) => ProcessExit::TimedOut,
+        };
+
+        match exit {
+            ProcessExit::Cancelled => {
                 let _ = child.kill().await;
+                let _ = progress_handle.await;
+                let _ = finish_output(stderr_handle).await;
                 super::cleanup_partial(output);
                 return Err(ConversionError::Cancelled);
             }
-        };
-
-        let _ = progress_handle.await;
-        let stderr = stderr_handle.await.unwrap_or_default();
-
-        if !status.success() {
-            super::cleanup_partial(output);
-            return Err(ConversionError::ProcessFailed {
-                message: "FFmpeg conversion failed".into(),
-                stderr,
-                exit_code: status.code(),
-            });
+            ProcessExit::TimedOut => {
+                let _ = child.kill().await;
+                let _ = progress_handle.await;
+                let _ = finish_output(stderr_handle).await;
+                super::cleanup_partial(output);
+                return Err(ConversionError::Timeout {
+                    seconds: FFMPEG_CONVERSION_TIMEOUT.as_secs(),
+                });
+            }
+            ProcessExit::Finished(Err(error)) => {
+                let _ = child.kill().await;
+                let _ = progress_handle.await;
+                let stderr = finish_output(stderr_handle).await;
+                super::cleanup_partial(output);
+                return Err(ConversionError::ProcessFailed {
+                    message: format!("FFmpeg process could not be awaited: {error}"),
+                    stderr,
+                    exit_code: None,
+                });
+            }
+            ProcessExit::Finished(Ok(status)) => {
+                let _ = progress_handle.await;
+                let stderr = finish_output(stderr_handle).await;
+                if !status.success() {
+                    super::cleanup_partial(output);
+                    return Err(ConversionError::ProcessFailed {
+                        message: "FFmpeg conversion failed".into(),
+                        stderr,
+                        exit_code: status.code(),
+                    });
+                }
+            }
         }
 
-        let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
-        info!("FFmpeg conversion complete: {} bytes", meta.len());
+        let output_size = super::verification::nonempty_file(output)?;
+        info!("FFmpeg conversion complete: {output_size} bytes");
 
         Ok(ConversionResult {
             output_path: output.to_string_lossy().into(),
-            output_size: meta.len(),
+            output_paths: Vec::new(),
+            output_size,
             duration_ms: 0,
+            undo_manifest: None,
         })
     }
 }
@@ -188,12 +216,14 @@ impl ConversionEngine for FfmpegEngine {
 async fn convert_to_gif(
     input: &Path,
     output: &Path,
+    job_id: &str,
     app: &AppHandle,
     cancel_token: CancellationToken,
 ) -> Result<ConversionResult, ConversionError> {
     let _ = app.emit(
         "conversion-progress",
         ProgressPayload {
+            job_id: job_id.to_owned(),
             percent: -1,
             stage: "Generating palette…".into(),
         },
@@ -207,7 +237,7 @@ async fn convert_to_gif(
     let palette = tmp.path().join("palette.png");
 
     // Pass 1: generate palette.
-    let status = run_ffmpeg_simple(
+    run_ffmpeg_simple(
         &[
             "-i",
             &input.to_string_lossy(),
@@ -217,20 +247,15 @@ async fn convert_to_gif(
             &palette.to_string_lossy(),
         ],
         &cancel_token,
+        &palette,
+        "GIF palette generation failed",
     )
     .await?;
-
-    if !status.success() {
-        return Err(ConversionError::ProcessFailed {
-            message: "GIF palette generation failed".into(),
-            stderr: String::new(),
-            exit_code: status.code(),
-        });
-    }
 
     let _ = app.emit(
         "conversion-progress",
         ProgressPayload {
+            job_id: job_id.to_owned(),
             percent: 50,
             stage: "Encoding GIF…".into(),
         },
@@ -238,7 +263,7 @@ async fn convert_to_gif(
 
     // Pass 2: encode with palette.
     let filter = "fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse";
-    let status = run_ffmpeg_simple(
+    run_ffmpeg_simple(
         &[
             "-i",
             &input.to_string_lossy(),
@@ -250,23 +275,18 @@ async fn convert_to_gif(
             &output.to_string_lossy(),
         ],
         &cancel_token,
+        output,
+        "GIF encoding failed",
     )
     .await?;
 
-    if !status.success() {
-        super::cleanup_partial(output);
-        return Err(ConversionError::ProcessFailed {
-            message: "GIF encoding failed".into(),
-            stderr: String::new(),
-            exit_code: status.code(),
-        });
-    }
-
-    let meta = std::fs::metadata(output).map_err(|_| ConversionError::OutputMissing)?;
+    let output_size = super::verification::nonempty_file(output)?;
     Ok(ConversionResult {
         output_path: output.to_string_lossy().into(),
-        output_size: meta.len(),
+        output_paths: Vec::new(),
+        output_size,
         duration_ms: 0,
+        undo_manifest: None,
     })
 }
 
@@ -417,44 +437,21 @@ fn audio_codec_args(format: Format) -> Vec<String> {
 async fn run_ffmpeg_simple(
     args: &[&str],
     cancel_token: &CancellationToken,
-) -> Result<std::process::ExitStatus, ConversionError> {
-    let mut child = tool_command("ffmpeg")
-        .args(args)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| ConversionError::ProcessFailed {
-            message: format!("Failed to spawn ffmpeg: {e}"),
-            stderr: String::new(),
-            exit_code: None,
-        })?;
-
-    let stderr = child.stderr.take();
-    let stderr_handle = tokio::spawn(async move {
-        match stderr {
-            Some(mut stderr) => {
-                use tokio::io::AsyncReadExt;
-                let mut output = String::new();
-                let _ = stderr.read_to_string(&mut output).await;
-                output
-            }
-            None => String::new(),
-        }
-    });
-
-    let result = tokio::select! {
-        result = child.wait() => {
-            result.map_err(|e| ConversionError::ProcessFailed {
-                message: format!("ffmpeg error: {e}"),
-                stderr: String::new(),
-                exit_code: None,
-            })
-        }
-        _ = cancel_token.cancelled() => {
-            let _ = child.kill().await;
-            Err(ConversionError::Cancelled)
-        }
-    };
-    let _ = stderr_handle.await;
-    result
+    partial_output: &Path,
+    failure_message: &'static str,
+) -> Result<(), ConversionError> {
+    let mut command = tool_command("ffmpeg");
+    command.args(args);
+    run_process(
+        command,
+        cancel_token.clone(),
+        FFMPEG_CONVERSION_TIMEOUT,
+        &[partial_output],
+        ProcessMessages {
+            start: "Failed to start FFmpeg",
+            wait: "FFmpeg process could not be awaited",
+            failure: failure_message,
+        },
+    )
+    .await
 }

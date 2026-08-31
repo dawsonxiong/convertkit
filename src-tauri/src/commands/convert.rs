@@ -2,29 +2,33 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use log::warn;
-use tauri::{AppHandle, Emitter, Manager};
-use uuid::Uuid;
+use serde::Deserialize;
+use tauri::{AppHandle, Emitter};
 
 use crate::engines::{self, ConversionRequest, ConversionResult};
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
-use crate::ActiveJobs;
 
 use super::output::{prepare_output, OutputOptions};
 
-/// Guard that removes a job from [`ActiveJobs`] on drop, even if a panic
-/// occurs during conversion.
-struct JobGuard {
-    app: AppHandle,
-    job_id: String,
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioOutputFormat {
+    Mp3,
+    M4a,
+    Wav,
+    Flac,
 }
 
-impl Drop for JobGuard {
-    fn drop(&mut self) {
-        let state = self.app.state::<ActiveJobs>();
-        let mut jobs = state.0.lock().expect("ActiveJobs lock poisoned");
-        jobs.remove(&self.job_id);
+impl AudioOutputFormat {
+    pub(super) fn format(self) -> Format {
+        match self {
+            Self::Mp3 => Format::Mp3,
+            Self::M4a => Format::M4a,
+            Self::Wav => Format::Wav,
+            Self::Flac => Format::Flac,
+        }
     }
 }
 
@@ -32,16 +36,30 @@ impl Drop for JobGuard {
 ///
 /// Spawns the appropriate engine, emits progress events, and returns the
 /// result on success.
-#[tauri::command]
-pub async fn convert(
+pub(super) async fn convert(
     app: AppHandle,
     input_path: String,
     output_format: String,
     job_id: Option<String>,
     output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
+    let out_format = Format::from_extension(&output_format).ok_or_else(|| {
+        ConversionError::UnsupportedConversion {
+            input: "Unknown source".into(),
+            output: output_format,
+        }
+    })?;
+    convert_format(app, input_path, out_format, job_id, output_options).await
+}
+
+async fn convert_format(
+    app: AppHandle,
+    input_path: String,
+    out_format: Format,
+    job_id: Option<String>,
+    output_options: Option<OutputOptions>,
+) -> Result<ConversionResult, ConversionError> {
     let started = Instant::now();
-    let job_id = job_id.unwrap_or_else(|| Uuid::new_v4().to_string());
 
     // --- Parse formats ---
     let input = PathBuf::from(&input_path);
@@ -57,14 +75,14 @@ pub async fn convert(
     if input_meta.len() == 0 {
         return Err(ConversionError::UnsupportedConversion {
             input: "File is empty (0 bytes)".to_string(),
-            output: output_format.clone(),
+            output: out_format.label().into(),
         });
     }
 
     if !input_meta.is_file() {
         return Err(ConversionError::UnsupportedConversion {
             input: "Path is not a regular file".to_string(),
-            output: output_format.clone(),
+            output: out_format.label().into(),
         });
     }
 
@@ -77,7 +95,7 @@ pub async fn convert(
     if input_ext.is_empty() {
         return Err(ConversionError::UnsupportedConversion {
             input: "File has no extension".to_string(),
-            output: output_format.clone(),
+            output: out_format.label().into(),
         });
     }
 
@@ -99,67 +117,47 @@ pub async fn convert(
     let input_format = Format::from_extension(input_ext).ok_or_else(|| {
         ConversionError::UnsupportedConversion {
             input: input_ext.to_string(),
-            output: output_format.clone(),
+            output: out_format.label().into(),
         }
     })?;
-
-    let out_format = Format::from_extension(&output_format).ok_or_else(|| {
-        ConversionError::UnsupportedConversion {
-            input: input_ext.to_string(),
-            output: output_format.clone(),
-        }
-    })?;
-
     // --- Resolve engine ---
-    let engine = engines::get_engine(input_format, out_format).ok_or_else(|| {
-        ConversionError::UnsupportedConversion {
+    if engines::get_engines(input_format, out_format).is_empty() {
+        return Err(ConversionError::UnsupportedConversion {
             input: input_format.label().to_string(),
             output: out_format.label().to_string(),
-        }
-    })?;
-
-    if !engine.is_available() {
-        return Err(ConversionError::MissingDependency {
-            tool: engine.required_tool().to_string(),
-            install_hint: format!(
-                "Install {} to enable this conversion",
-                engine.required_tool()
-            ),
         });
     }
+    let engine = engines::get_engine(input_format, out_format).ok_or_else(|| {
+        let groups = engines::missing_tool_groups(input_format, out_format);
+        let requirements = groups
+            .iter()
+            .map(|group| group.join(" + "))
+            .collect::<Vec<_>>()
+            .join(" or ");
+        ConversionError::MissingDependency {
+            tool: requirements.clone(),
+            install_hint: format!("Install {requirements} to enable this conversion"),
+        }
+    })?;
 
     let prepared_output = prepare_output(&input, out_format.extension(), "", output_options)?;
 
-    // Prevent double-submit
-    let cancel_token = tokio_util::sync::CancellationToken::new();
-    {
-        let state = app.state::<ActiveJobs>();
-        let mut jobs = state.0.lock().expect("ActiveJobs lock poisoned");
-        if jobs.contains_key(&job_id) {
-            return Err(ConversionError::UnsupportedConversion {
-                input: "Duplicate job ID".to_string(),
-                output: format!("Job '{}' is already running", job_id),
-            });
-        }
-        jobs.insert(job_id.clone(), cancel_token.clone());
-    }
-
-    // Guard ensures the job is removed even on panic.
-    let _guard = JobGuard {
-        app: app.clone(),
-        job_id: job_id.clone(),
-    };
+    let active_job = super::jobs::ActiveJobGuard::register(app.clone(), job_id)?;
+    let cancel_token = active_job.cancel_token();
+    let event_job_id = active_job.job_id().to_owned();
 
     // Emit initial progress
     let _ = app.emit(
         "conversion-progress",
         ProgressPayload {
+            job_id: event_job_id.clone(),
             percent: 0,
             stage: "Starting conversion".to_string(),
         },
     );
 
     let request = ConversionRequest {
+        job_id: event_job_id.clone(),
         input_path: input,
         output_path: prepared_output.working_path().to_path_buf(),
         input_format,
@@ -167,7 +165,9 @@ pub async fn convert(
     };
 
     // Timeout
-    let timeout_duration = if out_format.category() == FileCategory::Video {
+    let timeout_duration = if input_format.category() == FileCategory::Video
+        || out_format.category() == FileCategory::Video
+    {
         Duration::from_secs(5 * 60) // 5 minutes for video
     } else {
         Duration::from_secs(2 * 60) // 2 minutes for everything else
@@ -198,6 +198,7 @@ pub async fn convert(
             let _ = app.emit(
                 "conversion-progress",
                 ProgressPayload {
+                    job_id: event_job_id,
                     percent: 100,
                     stage: "Complete".to_string(),
                 },
@@ -205,5 +206,22 @@ pub async fn convert(
             Ok(res)
         }
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_output_formats_map_to_audio_formats() {
+        for format in [
+            AudioOutputFormat::Mp3,
+            AudioOutputFormat::M4a,
+            AudioOutputFormat::Wav,
+            AudioOutputFormat::Flac,
+        ] {
+            assert_eq!(format.format().category(), FileCategory::Audio);
+        }
     }
 }

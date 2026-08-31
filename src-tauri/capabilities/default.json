@@ -5,8 +5,6 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "dialog:default",
-    "shell:allow-open",
-    "drag:default"
+    "dialog:default"
   ]
 }

@@ -1,6 +1,7 @@
 import type { FileCategory } from "../types";
+import formatMatrix from "./formatMatrix.json" with { type: "json" };
 
-export interface FormatMeta {
+interface FormatMeta {
   extension: string;
   label: string;
   category: FileCategory;
@@ -43,57 +44,17 @@ export const FORMAT_INFO: Record<string, FormatMeta> = {
 
   // ── Vector ──────────────────────────────────────────────
   svg: { extension: "svg", label: "SVG", category: "vector" },
+
+  // ── Archive ─────────────────────────────────────────────
+  zip: { extension: "zip", label: "ZIP", category: "other" },
+  tar: { extension: "tar", label: "TAR", category: "other" },
 };
 
 /* ── Conversion compatibility matrix ──────────────────────── */
 
-const IMAGE_FORMATS = ["jpg", "png", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic"];
-const VIDEO_FORMATS = ["mp4", "mov", "webm", "mkv", "avi"];
-const AUDIO_FORMATS = ["mp3", "wav", "aac", "flac", "ogg", "m4a"];
-
-const without = (arr: string[], item: string) => arr.filter((f) => f !== item);
-
-export const COMPATIBLE_TARGETS: Record<string, string[]> = {
-  // Image -> all other image formats + SVG (raster-to-vector)
-  jpg: [...without(IMAGE_FORMATS, "jpg"), "svg"],
-  png: [...without(IMAGE_FORMATS, "png"), "svg"],
-  webp: [...without(IMAGE_FORMATS, "webp"), "svg"],
-  tiff: [...without(IMAGE_FORMATS, "tiff"), "svg"],
-  bmp: [...without(IMAGE_FORMATS, "bmp"), "svg"],
-  gif: [...without(IMAGE_FORMATS, "gif"), "svg"],
-  ico: [...without(IMAGE_FORMATS, "ico"), "svg"],
-  avif: [...without(IMAGE_FORMATS, "avif"), "svg"],
-  heic: [...without(IMAGE_FORMATS, "heic"), "svg"],
-
-  // Video -> all other video formats + GIF + audio extraction
-  mp4: [...without(VIDEO_FORMATS, "mp4"), "gif", ...AUDIO_FORMATS],
-  mov: [...without(VIDEO_FORMATS, "mov"), "gif", ...AUDIO_FORMATS],
-  webm: [...without(VIDEO_FORMATS, "webm"), "gif", ...AUDIO_FORMATS],
-  mkv: [...without(VIDEO_FORMATS, "mkv"), "gif", ...AUDIO_FORMATS],
-  avi: [...without(VIDEO_FORMATS, "avi"), "gif", ...AUDIO_FORMATS],
-
-  // Audio -> all other audio formats
-  mp3: without(AUDIO_FORMATS, "mp3"),
-  wav: without(AUDIO_FORMATS, "wav"),
-  aac: without(AUDIO_FORMATS, "aac"),
-  flac: without(AUDIO_FORMATS, "flac"),
-  ogg: without(AUDIO_FORMATS, "ogg"),
-  m4a: without(AUDIO_FORMATS, "m4a"),
-
-  // Document -> pandoc / libreoffice matrix
-  pdf: [],
-  docx: ["pdf", "html", "md", "txt", "epub"],
-  html: ["pdf", "docx", "md", "txt", "epub"],
-  md: ["pdf", "docx", "html", "txt", "epub"],
-  epub: ["pdf", "docx", "html", "md", "txt"],
-  txt: ["pdf", "docx", "html", "md", "epub"],
-
-  // SVG -> raster (resvg handles PNG; ImageMagick handles the rest)
-  svg: [...IMAGE_FORMATS],
-};
-
-/** Set of all supported file extensions (lowercase, no dot). */
-export const SUPPORTED_EXTENSIONS = new Set(Object.keys(FORMAT_INFO));
+// Rust tests also validate this file against every engine route. Keep one
+// frontend source so the picker and input filtering cannot drift apart.
+export const COMPATIBLE_TARGETS: Readonly<Record<string, readonly string[]>> = formatMatrix;
 
 const EXTENSION_ALIASES: Record<string, string> = {
   jpeg: "jpg",
@@ -109,25 +70,9 @@ const EXTENSION_ALIASES: Record<string, string> = {
 };
 
 export const SUPPORTED_INPUT_EXTENSIONS_LIST = [
-  ...SUPPORTED_EXTENSIONS,
+  ...Object.keys(FORMAT_INFO),
   ...Object.keys(EXTENSION_ALIASES),
 ];
-
-const SUPPORTED_INPUT_EXTENSIONS = new Set(SUPPORTED_INPUT_EXTENSIONS_LIST);
-
-/** All supported extensions as a list (for file dialog filters). */
-export const SUPPORTED_EXTENSIONS_LIST = Object.keys(FORMAT_INFO);
-
-/** File dialog filter that only shows supported formats. */
-export const FILE_DIALOG_FILTERS = [
-  { name: "Supported files", extensions: SUPPORTED_INPUT_EXTENSIONS_LIST },
-];
-
-/** Check whether a file path has a supported extension. */
-export function isSupportedFile(path: string): boolean {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return SUPPORTED_INPUT_EXTENSIONS.has(ext);
-}
 
 /** Convert a supported alias into the canonical format key. */
 export function normalizeExtension(extension: string): string {
@@ -136,39 +81,6 @@ export function normalizeExtension(extension: string): string {
 }
 
 /** Returns the list of compatible output format keys for a given input format. */
-export function getCompatibleFormats(inputFormat: string): string[] {
+export function getCompatibleFormats(inputFormat: string): readonly string[] {
   return COMPATIBLE_TARGETS[inputFormat.toLowerCase()] ?? [];
-}
-
-interface CategoryGroup {
-  category: string;
-  formats: string[];
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  image: "Image",
-  video: "Video",
-  audio: "Audio",
-  document: "Document",
-  vector: "Vector",
-};
-
-const CATEGORY_ORDER: FileCategory[] = ["image", "video", "audio", "document", "vector"];
-
-/** Groups an array of format keys by their category, in a stable order. */
-export function getCategoryFormats(formats: string[]): CategoryGroup[] {
-  const grouped: Record<string, string[]> = {};
-
-  for (const fmt of formats) {
-    const meta = FORMAT_INFO[fmt];
-    if (!meta) continue;
-    const cat = meta.category;
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(fmt);
-  }
-
-  return CATEGORY_ORDER.filter((cat) => grouped[cat] && grouped[cat].length > 0).map((cat) => ({
-    category: CATEGORY_LABELS[cat] ?? cat,
-    formats: grouped[cat],
-  }));
 }

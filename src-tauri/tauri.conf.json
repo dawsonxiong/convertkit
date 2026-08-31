@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "pnpm native:helpers && pnpm dev",
+    "beforeBuildCommand": "pnpm native:helpers && pnpm build"
   },
   "app": {
     "windows": [
@@ -31,13 +31,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+    "externalBin": [
+      "binaries/convertkit-vision-ocr",
+      "binaries/convertkit-image-pdf",
+      "binaries/whisper-cli"
     ],
+    "resources": {
+      "runtime/whisper/": "whisper-runtime/"
+    },
+    "icon": ["icons/icon.icns"],
     "fileAssociations": [
       {
         "ext": ["jpg", "jpeg", "png", "webp", "tiff", "tif", "bmp", "gif", "ico", "avif", "heic", "heif"],
@@ -66,6 +68,41 @@
         "ext": ["svg"],
         "name": "SVG Vector",
         "mimeType": "image/svg+xml",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["zip"],
+        "contentTypes": ["public.zip-archive"],
+        "name": "ZIP Archive",
+        "mimeType": "application/zip",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["tar"],
+        "contentTypes": ["public.tar-archive"],
+        "name": "TAR Archive",
+        "mimeType": "application/x-tar",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["7z"],
+        "contentTypes": ["org.7-zip.7-zip-archive"],
+        "name": "7Z Archive",
+        "mimeType": "application/x-7z-compressed",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["gz"],
+        "contentTypes": ["org.gnu.gnu-zip-archive"],
+        "name": "GZIP Archive",
+        "mimeType": "application/x-gzip",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["tgz"],
+        "contentTypes": ["org.gnu.gnu-zip-tar-archive"],
+        "name": "TGZ Archive",
+        "mimeType": "application/gzip",
         "role": "Viewer"
       }
     ]

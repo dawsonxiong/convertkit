@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities for ConvertKit","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-start-dragging","dialog:default","shell:allow-open","drag:default"]}}
