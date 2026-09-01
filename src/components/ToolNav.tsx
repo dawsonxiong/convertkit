@@ -7,10 +7,29 @@ import { RecentJobs } from "./RecentJobs";
 
 interface ToolNavProps {
   operation: Operation;
+  homeActive: boolean;
   activityActive: boolean;
   disabled: boolean;
   onChange: (operation: Operation) => void;
+  onOpenHome: () => void;
   onOpenActivity: () => void;
+}
+
+function HomeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m4 10 8-6 8 6v10H4V10Z" />
+      <path d="M9 20v-6h6v6" />
+    </svg>
+  );
 }
 
 function ConvertIcon() {
@@ -411,11 +430,18 @@ const ICONS: Record<SidebarOperation, () => React.JSX.Element> = {
   inspect: InspectIcon,
 };
 
+export function OperationIcon({ operation }: { operation: SidebarOperation }) {
+  const Icon = ICONS[operation];
+  return <Icon />;
+}
+
 export function ToolNav({
   operation,
+  homeActive,
   activityActive,
   disabled,
   onChange,
+  onOpenHome,
   onOpenActivity,
 }: ToolNavProps) {
   const [query, setQuery] = useState("");
@@ -483,6 +509,27 @@ export function ToolNav({
         />
       </div>
 
+      {!normalizedQuery && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onOpenHome}
+          aria-current={homeActive ? "page" : undefined}
+          className={`sidebar-tool-button group mb-4 ${
+            homeActive
+              ? "bg-[#353437] text-[#b0c6ff]"
+              : "text-[#a9a9b2] hover:bg-[#201f22] hover:text-[#e5e1e4]"
+          }`}
+        >
+          <span
+            className={`sidebar-tool-icon ${homeActive ? "text-[#b0c6ff]" : "text-[#8e909a] group-hover:text-[#c5c6d0]"}`}
+          >
+            <HomeIcon />
+          </span>
+          Dashboard
+        </button>
+      )}
+
       <div className="sidebar-scroll queue-scroll -mr-1 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
         <nav className="flex shrink-0 flex-col gap-4" aria-label="File tools">
           {filteredSections.map((section) => (
@@ -494,8 +541,7 @@ export function ToolNav({
               <div className="flex flex-col gap-1.5">
                 {section.operations.map((value) => {
                   const meta = OPERATIONS[value];
-                  const Icon = ICONS[value];
-                  const active = !activityActive && value === operation;
+                  const active = !homeActive && !activityActive && value === operation;
 
                   return (
                     <button
@@ -513,7 +559,7 @@ export function ToolNav({
                       <span
                         className={`sidebar-tool-icon ${active ? "text-[#b0c6ff]" : "text-[#8e909a] group-hover:text-[#c5c6d0]"}`}
                       >
-                        <Icon />
+                        <OperationIcon operation={value} />
                       </span>
                       {meta.label}
                     </button>

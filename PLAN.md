@@ -29,10 +29,12 @@ The app is organized by user intent, not by file format or command-line engine.
 | Video and audio   | Encode, extract streams, create thumbnails, subtitles, transcription | Working             |
 | PDF and documents | Text extraction/OCR, combine, split, page export, and compression    | Working             |
 | Organize          | Archives, batch rename, and inspection                               | Working             |
-| Automation        | Saved recipes and Finder actions                                      | Working             |
+| Automation        | Built-in Finder actions, saved recipes, and recipe actions            | Working             |
 
 The left tool rail is the long-term navigation model. Only usable tools appear in
 the primary list. Future features should not be shipped as disabled buttons.
+The default Dashboard is the lightweight starting point: common utilities, Finder setup,
+and resumable recent work without duplicating each tool's controls.
 
 ## Experience principles
 
@@ -181,6 +183,10 @@ the primary list. Future features should not be shipped as disabled buttons.
   batch, survives cold launches, restores the exact current recipe, and stages an isolated
   queue for the existing explicit preflight and run action. Deleting a recipe also removes
   its Finder workflow.
+- The Dashboard can install or remove four built-in Finder Quick Actions: Convert files,
+  Optimize images, Remove metadata, and Inspect files. Each action transports a bounded Finder
+  selection through the same launch-safe request bridge, opens the matching retained workspace,
+  and stops at the normal review/preflight step instead of processing automatically.
 - Every progress event carries the exact producing job ID from its active-job guard through
   FFmpeg readers, PDF/OCR helpers, archive workers, rename callbacks, and native helpers.
   The frontend accepts progress only for the currently active ID, cancellation fallbacks can
@@ -736,6 +742,9 @@ Destructive actions require previews, explicit confirmation, and a recoverable p
 
 #### Automation
 
+- [x] Default Dashboard with common utilities, resumable recent jobs, and explicit Finder setup.
+- [x] Built-in Finder Quick Actions for conversion, image optimization, metadata removal, and
+      inspection, routed into isolated retained queues without automatically starting work.
 - [x] Saved recipes that restore validated operation settings, destination, and naming while
       deliberately excluding input-specific page and stream selections.
 - [x] Batch Finder Open With with launch-safe buffering and intent-aware tool routing.

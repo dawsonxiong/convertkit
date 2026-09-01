@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { DropZone } from "./components/DropZone";
+import { DashboardWorkspace } from "./components/DashboardWorkspace";
 import { HistoryWorkspace } from "./components/HistoryWorkspace";
 import { InspectorWorkspace } from "./components/InspectorWorkspace";
 import { ToolNav } from "./components/ToolNav";
@@ -11,6 +12,7 @@ import { useProgress } from "./hooks/useProgress";
 import { useJobRunner } from "./hooks/useJobRunner";
 import { useAddPaths } from "./hooks/useAddPaths";
 import { useWorkspaceRecovery } from "./hooks/useWorkspaceRecovery";
+import { operationForBuiltInFinderAction } from "./lib/finderActions";
 import { getOperationDialogFilter, OPERATIONS } from "./lib/operations";
 import {
   type FinderQuickActionRequest,
@@ -39,11 +41,11 @@ import { useSavedRecipes } from "./store/useSavedRecipes";
 import type { Operation } from "./types";
 
 export default function App() {
-  const [activityActive, setActivityActive] = useState(
-    () =>
-      import.meta.env.DEV &&
-      new URLSearchParams(window.location.search).get("fixture") === "activity",
-  );
+  const fixture = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("fixture")
+    : null;
+  const [homeActive, setHomeActive] = useState(() => !fixture);
+  const [activityActive, setActivityActive] = useState(() => fixture === "activity");
   const state = useAppStore((store) => store.state);
   const operation = useAppStore((store) => store.operation);
   const workspaceAdmission = useAppStore((store) => store.workspaceAdmission);
@@ -53,7 +55,7 @@ export default function App() {
   const clearRejection = useAppStore((store) => store.clearRejection);
   const setRejection = useAppStore((store) => store.setRejection);
   const requestBatchCancel = useAppStore((store) => store.requestBatchCancel);
-  const auxiliaryViewActive = activityActive;
+  const auxiliaryViewActive = homeActive || activityActive;
   const admissionPending = workspaceAdmissionIsPending(workspaceAdmission);
   const intakeBlocked = isInputIntakeBlocked(state, auxiliaryViewActive, admissionPending);
   const { isDragging } = useFileDrop(!intakeBlocked);
@@ -118,6 +120,7 @@ export default function App() {
       }
 
       const targetOperation = operationForOpenedPaths(paths, useAppStore.getState().operation);
+      setHomeActive(false);
       setActivityActive(false);
       if (targetOperation !== useAppStore.getState().operation) setOperation(targetOperation);
       await addPaths(paths, targetOperation);
@@ -134,6 +137,16 @@ export default function App() {
         return;
       }
 
+      const builtInOperation = operationForBuiltInFinderAction(request.recipeId);
+      if (builtInOperation) {
+        if (builtInOperation !== useAppStore.getState().operation) setOperation(builtInOperation);
+        setHomeActive(false);
+        setActivityActive(false);
+        useAppStore.getState().reset();
+        await addPaths(request.paths, builtInOperation);
+        return;
+      }
+
       const recipe = useSavedRecipes
         .getState()
         .recipes.find((candidate) => candidate.id === request.recipeId);
@@ -143,6 +156,7 @@ export default function App() {
       }
 
       if (recipe.operation !== useAppStore.getState().operation) setOperation(recipe.operation);
+      setHomeActive(false);
       setActivityActive(false);
       const target = useAppStore.getState();
       target.reset();
@@ -231,6 +245,7 @@ export default function App() {
   const openOperation = useCallback(
     (value: Operation) => {
       if (useAppStore.getState().workspaceAdmission.phase !== "idle") return;
+      setHomeActive(false);
       setActivityActive(false);
       if (value !== useAppStore.getState().operation) setOperation(value);
     },
@@ -329,17 +344,36 @@ export default function App() {
     <div className="app-background flex h-screen w-screen select-none overflow-hidden bg-surface text-white">
       <ToolNav
         operation={operation}
+        homeActive={homeActive}
         activityActive={activityActive}
         disabled={!workspaceReady || workspaceAdmission.phase !== "idle"}
         onChange={openOperation}
-        onOpenActivity={() => setActivityActive(true)}
+        onOpenHome={() => {
+          if (useAppStore.getState().workspaceAdmission.phase !== "idle") return;
+          setActivityActive(false);
+          setHomeActive(true);
+        }}
+        onOpenActivity={() => {
+          setHomeActive(false);
+          setActivityActive(true);
+        }}
       />
 
       <section className="relative flex min-w-0 flex-1 flex-col">
         <header className="h-10 shrink-0 border-b border-[#3b3d46]" data-tauri-drag-region />
 
         <main className="workspace-grid min-h-0 flex-1 overflow-hidden p-6">
-          {activityActive ? (
+          {homeActive ? (
+            <DashboardWorkspace
+              disabled={admissionPending || state === "converting"}
+              onOpen={openOperation}
+              onOpenActivity={() => {
+                setHomeActive(false);
+                setActivityActive(true);
+              }}
+              onError={setRejection}
+            />
+          ) : activityActive ? (
             <HistoryWorkspace
               disabled={admissionPending || state === "converting"}
               onOpen={openOperation}

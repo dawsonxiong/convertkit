@@ -15,39 +15,23 @@ interface RecentJobsProps {
 
 export function RecentJobs({ disabled, onOpen, onViewAll, active }: RecentJobsProps) {
   const jobs = useRecentJobs((state) => state.jobs);
-  const recordingEnabled = useRecentJobs((state) => state.recordingEnabled);
-  const setRecordingEnabled = useRecentJobs((state) => state.setRecordingEnabled);
   const clear = useRecentJobs((state) => state.clear);
   const { reopen, load, undo } = useRecentJobActions(onOpen);
 
-  if (jobs.length === 0 && recordingEnabled) return null;
+  if (jobs.length === 0) return null;
 
   return (
     <section className="mt-auto pt-5" aria-label="Recent jobs">
-      <header className="mb-1.5 flex items-center justify-between px-2">
+      <header className="mb-0.5 flex items-center justify-between px-2">
         <h2 className="text-[11px] font-medium text-white/40">Recent</h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setRecordingEnabled(!recordingEnabled)}
-            disabled={disabled}
-            aria-label={recordingEnabled ? "Pause recent job history" : "Resume recent job history"}
-            title={recordingEnabled ? "Stop saving new recent jobs" : "Save new recent jobs"}
-            className="text-button text-button-large"
-          >
-            {recordingEnabled ? "Pause" : "Resume"}
-          </button>
-          {jobs.length > 0 && (
-            <button
-              type="button"
-              onClick={clear}
-              disabled={disabled}
-              className="text-button text-button-large"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={clear}
+          disabled={disabled}
+          className="text-button text-button-large"
+        >
+          Clear
+        </button>
       </header>
 
       <div className="flex flex-col gap-0.5">

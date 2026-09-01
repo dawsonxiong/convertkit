@@ -55,18 +55,19 @@ export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
         </div>
       </header>
 
-      <div className="mt-5 flex min-h-0 flex-1 flex-col border border-[#3b3d46] bg-[#131315]">
-        <header className="flex h-11 shrink-0 items-center border-b border-[#3b3d46] bg-[#1b1b1d] px-3">
-          <h2 className="text-[13px] font-semibold text-white/85">Recent jobs ({jobs.length})</h2>
-        </header>
+      <div className="mt-5 min-h-0 flex-1">
+        <div className="flex max-h-full flex-col border border-[#3b3d46] bg-[#131315]">
+          <header className="flex h-11 shrink-0 items-center border-b border-[#3b3d46] bg-[#1b1b1d] px-3">
+            <h2 className="text-[13px] font-semibold text-white/85">Recent jobs ({jobs.length})</h2>
+          </header>
 
-        {jobs.length === 0 ? (
-          <div className="grid min-h-40 flex-1 place-items-center text-sm text-white/40">
-            No recent jobs
-          </div>
-        ) : (
-          <div className="queue-scroll min-h-0 flex-1 overflow-y-auto">
-            {jobs.map((job) => {
+          {jobs.length === 0 ? (
+            <div className="grid min-h-40 place-items-center text-sm text-white/40">
+              No recent jobs
+            </div>
+          ) : (
+            <div className="queue-scroll min-h-0 overflow-y-auto">
+              {jobs.map((job) => {
               const first = job.items[0];
               const outputPaths = outputPathsForRecentJob(job);
               const issue = recentJobIssue(job);
@@ -140,9 +141,10 @@ export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
                   />
                 </article>
               );
-            })}
-          </div>
-        )}
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

@@ -91,6 +91,41 @@ select {
   box-shadow: none;
 }
 
+.dashboard-panel {
+  border: 1px solid #303139;
+  background: #18181a;
+  padding: 14px;
+}
+
+.dashboard-action {
+  display: flex;
+  min-width: 0;
+  height: 58px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #303139;
+  background: #18181a;
+  padding: 0 12px;
+  color: rgb(255 255 255 / 70%);
+}
+
+.dashboard-action:hover:not(:disabled) {
+  border-color: #494b55;
+  background: #1d1d20;
+}
+
+.dashboard-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.dashboard-action-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: #b0c6ff;
+}
+
 .workspace-queue {
   container-name: workspace-queue;
   container-type: inline-size;
@@ -136,7 +171,6 @@ select {
 }
 
 .workspace-grid,
-.sidebar-grid,
 .queue-grid,
 .drop-grid {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='2' cy='2' r='1' fill='%23555761' fill-opacity='.22'/%3E%3C/svg%3E");
@@ -179,7 +213,7 @@ select {
 
 .sidebar-section-title {
   margin-bottom: 4px;
-  padding: 0 8px;
+  padding: 0 12px;
   color: rgb(255 255 255 / 40%);
   font-size: 11px;
   font-weight: 500;

@@ -45,6 +45,11 @@ Combine to PDF, Create archive, and Batch rename process their input lists as on
 GZIP creation is the deliberate exception: it accepts exactly one directly selected regular file.
 Each tool keeps its uploaded files, settings, queue status, and results when you switch
 sidebar tabs. Inspect accepts files regardless of extension.
+ConvertKit opens on a compact dashboard with direct access to common utilities, recent work,
+and Finder integration. The Finder panel can install four opt-in macOS Quick Actions for
+conversion, image optimization, metadata removal, and inspection. A Finder selection opens in
+the matching retained workspace for review and preflight; the Quick Action never processes or
+overwrites a file automatically.
 Pasting text into settings behaves like a normal form field. Image clipboard data is accepted
 only by compatible tools, is bounded to 64 MiB, and is stored in an app-managed temporary
 workspace that is cleaned on exit.
@@ -53,7 +58,7 @@ ConvertKit revalidates every restored path through the native input collector, r
 its file details, drops missing or unsupported entries, and returns interrupted work to a
 pending queue. Startup restoration and job preflight claim the exact workspace before their
 asynchronous checks begin, so late results cannot overwrite another tab or start against the
-wrong queue. File intake, settings, navigation, and automation wait until that claim settles.
+wrong queue. File intake, settings, and navigation wait until that claim settles.
 Processes never pretend to resume halfway through; completed output remains
 available through Recent Jobs. Completed, partial, failed, skipped, and cancelled batch
 outcomes persist there across restarts, including transcription. Failed rows retain only a
@@ -71,9 +76,10 @@ Output-producing tools can save, apply, and remove operation-specific recipes. A
 captures the relevant processing choices together with the destination folder and filename
 suffix. Recipes still exclude input-specific decisions such as an embedded stream or a PDF page
 range; Activity may restore those only from the exact validated job that recorded them. Existing
-output-only presets migrate as compatible recipes. On macOS, the bolt beside an active recipe installs or removes a matching
-Finder Quick Action. Running it stages the selected files in an isolated queue with the recipe
-restored, leaving the normal preflight and final Run button in control.
+output-only presets migrate as compatible recipes. On macOS, the bolt beside an active recipe
+installs or removes a matching Finder Quick Action. Running it stages the selected files in an
+isolated queue with the recipe restored, leaving the normal preflight and final Run button in
+control.
 
 ## Conversion Format Matrix
 

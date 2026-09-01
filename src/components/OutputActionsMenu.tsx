@@ -27,7 +27,7 @@ interface MenuPosition {
   top: number;
 }
 
-const MENU_WIDTH = 196;
+const MENU_WIDTH = 180;
 const MENU_MAX_HEIGHT = 280;
 const MENU_GAP = 4;
 const VIEWPORT_MARGIN = 8;
@@ -194,7 +194,7 @@ export function OutputActionsMenu({
             role="menu"
             aria-labelledby={`${menuId}-trigger`}
             onKeyDown={handleMenuKeyDown}
-            className="output-actions-menu fixed z-50 border border-[#44464f] bg-[#18181b] p-1"
+            className="output-actions-menu fixed z-50 border border-[#44464f] bg-[#18181b] py-1"
             style={{ left: position.left, top: position.top, width: MENU_WIDTH }}
           >
             {outputPaths.length > 0 && (
@@ -226,9 +226,9 @@ export function OutputActionsMenu({
               <div
                 role="group"
                 aria-label="Use output in"
-                className="mt-1 border-t border-white/10 pt-1"
+                className="mt-1 border-t border-white/10 pt-0.5"
               >
-                <div aria-hidden="true" className="px-2 py-1 text-[10px] font-medium text-white/35">
+                <div aria-hidden="true" className="px-3 py-0.5 text-[10px] font-medium text-white/35">
                   Use in
                 </div>
                 <div className="queue-scroll max-h-44 overflow-y-auto">
