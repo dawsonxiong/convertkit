@@ -55,9 +55,15 @@ export const SIDEBAR_OPERATIONS: readonly SidebarOperation[] = TOOL_SECTIONS.fla
   (section) => section.operations,
 );
 
-export function filterToolSections(query: string) {
+export function filterToolSections(query: string): ToolSection[] {
   const needle = query.trim().toLocaleLowerCase();
-  if (!needle) return TOOL_SECTIONS;
+  if (!needle) {
+    return TOOL_SECTIONS.map((section) => ({
+      id: section.id,
+      label: section.label,
+      operations: [...section.operations],
+    }));
+  }
   const queryTokens = needle.split(/\s+/);
 
   return TOOL_SECTIONS.map((section) => {
@@ -85,4 +91,22 @@ export function filterToolSections(query: string) {
 
     return { ...section, operations };
   }).filter((section) => section.operations.length > 0);
+}
+
+export function pinnedOperationsForQuery(pinned: readonly SidebarOperation[], query: string) {
+  const allowed = new Set(filterToolSections(query).flatMap((section) => section.operations));
+  return pinned.filter((operation) => allowed.has(operation));
+}
+
+export function excludePinnedOperations(
+  sections: readonly ToolSection[],
+  pinned: readonly SidebarOperation[],
+): ToolSection[] {
+  const pinnedSet = new Set(pinned);
+  return sections
+    .map((section) => ({
+      ...section,
+      operations: section.operations.filter((operation) => !pinnedSet.has(operation)),
+    }))
+    .filter((section) => section.operations.length > 0);
 }

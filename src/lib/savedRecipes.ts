@@ -541,6 +541,30 @@ export function serializeSavedRecipes(recipes: SavedRecipe[]): string {
   return JSON.stringify({ version: 2, recipes });
 }
 
+export function savedRecipeDestinationLabel(recipe: SavedRecipe): string {
+  const folder = recipe.directory
+    ? (recipe.directory.split(/[\\/]/).filter(Boolean).at(-1) ?? recipe.directory)
+    : "Source folder";
+  const suffix = recipe.suffix.trim();
+  return suffix ? `${folder} · ${suffix}` : folder;
+}
+
+export function groupedSavedRecipes(
+  recipes: readonly SavedRecipe[],
+): Array<{ operation: Operation; recipes: SavedRecipe[] }> {
+  const byOperation = new Map<Operation, SavedRecipe[]>();
+  for (const recipe of recipes) {
+    const existing = byOperation.get(recipe.operation);
+    if (existing) existing.push(recipe);
+    else byOperation.set(recipe.operation, [recipe]);
+  }
+
+  return SAVED_RECIPE_OPERATIONS.flatMap((operation) => {
+    const operationRecipes = byOperation.get(operation);
+    return operationRecipes ? [{ operation, recipes: operationRecipes }] : [];
+  });
+}
+
 export function savedRecipeNameExists(
   recipes: SavedRecipe[],
   operation: Operation,
@@ -565,4 +589,20 @@ export function savedRecipeMatches(
     recipe.suffix === suffix &&
     (recipe.settings === undefined || JSON.stringify(recipe.settings) === JSON.stringify(settings))
   );
+}
+
+export function updatedSavedRecipe(
+  recipe: SavedRecipe,
+  directory: string | null,
+  suffix: string,
+  settings?: SavedRecipeSettings,
+): SavedRecipe {
+  return {
+    id: recipe.id,
+    name: recipe.name,
+    operation: recipe.operation,
+    directory,
+    suffix,
+    ...(settings ? { settings } : {}),
+  };
 }

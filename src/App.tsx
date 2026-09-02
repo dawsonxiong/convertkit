@@ -25,6 +25,7 @@ import {
 } from "./lib/tauri";
 import { operationForOpenedPaths } from "./lib/openWith";
 import { outputPathsForResults } from "./lib/outputHandoff";
+import { applySavedRecipe } from "./lib/recipeActions";
 import {
   INPUT_INTAKE_BLOCKED_MESSAGE,
   isInputIntakeBlocked,
@@ -155,14 +156,11 @@ export default function App() {
         return;
       }
 
-      if (recipe.operation !== useAppStore.getState().operation) setOperation(recipe.operation);
       setHomeActive(false);
       setActivityActive(false);
-      const target = useAppStore.getState();
-      target.reset();
-      target.setOutputDirectory(recipe.directory);
-      target.setOutputSuffix(recipe.operation, recipe.suffix);
-      target.applyRecipeSettings(recipe.settings);
+      if (recipe.operation !== useAppStore.getState().operation) setOperation(recipe.operation);
+      useAppStore.getState().reset();
+      applySavedRecipe(recipe);
       await addPaths(request.paths, recipe.operation);
     },
     [addPaths, setOperation, setRejection],
@@ -367,6 +365,11 @@ export default function App() {
             <DashboardWorkspace
               disabled={admissionPending || state === "converting"}
               onOpen={openOperation}
+              onOpenRecipe={(recipe) => {
+                applySavedRecipe(recipe);
+                setHomeActive(false);
+                setActivityActive(false);
+              }}
               onOpenActivity={() => {
                 setHomeActive(false);
                 setActivityActive(true);
@@ -395,7 +398,6 @@ export default function App() {
                   onStart={startOperation}
                   onCancel={cancelBatch}
                   onCancelItem={cancelOperation}
-                  onOpenOperation={openOperation}
                   interactionBlocked={admissionPending}
                 />
               </div>

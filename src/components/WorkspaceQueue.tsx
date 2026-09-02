@@ -25,14 +25,12 @@ import { getFileInfo, undoRename } from "../lib/tauri";
 import { useRecentJobs } from "../store/useRecentJobs";
 import { FORMAT_INFO, getCompatibleFormats } from "../lib/formats";
 import { outputPathsForResults } from "../lib/outputHandoff";
-import type { ActiveOperation } from "../lib/operations";
-import { OutputActionsMenu } from "./OutputActionsMenu";
+import { OpenInFinderButton } from "./OpenInFinderButton";
 
 interface WorkspaceQueueProps {
   onStart: (paths?: string[]) => void;
   onCancel: () => void;
   onCancelItem: () => void;
-  onOpenOperation: (operation: ActiveOperation) => void;
   interactionBlocked?: boolean;
 }
 
@@ -40,7 +38,6 @@ export function WorkspaceQueue({
   onStart,
   onCancel,
   onCancelItem,
-  onOpenOperation,
   interactionBlocked = false,
 }: WorkspaceQueueProps) {
   const state = useAppStore((store) => store.state);
@@ -223,11 +220,9 @@ export function WorkspaceQueue({
               </select>
             )}
             {state === "done" && results.length > 1 && batchOutputPaths.length > 0 && (
-              <OutputActionsMenu
+              <OpenInFinderButton
                 paths={batchOutputPaths}
-                sourceOperation={operation}
-                onOpenOperation={onOpenOperation}
-                label="Output actions for completed batch"
+                ariaLabel="Open completed batch in Finder"
               />
             )}
             {canClear && (
@@ -285,7 +280,6 @@ export function WorkspaceQueue({
                       renamePreviewByPath.get(item.path)?.conflict ||
                       !renamePreviewByPath.get(item.path)?.valid
                     }
-                    onOpenOperation={onOpenOperation}
                   />
                 ))}
               </div>

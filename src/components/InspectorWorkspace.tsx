@@ -12,6 +12,7 @@ import {
   type ExpectedChecksum,
 } from "../lib/checksum";
 import { formatFileSize } from "../lib/fileUtils";
+import { OPERATIONS } from "../lib/operations";
 import {
   cancelConversion,
   computeFileHashes,
@@ -633,7 +634,7 @@ export function InspectorWorkspace({ isDragging }: { isDragging: boolean }) {
     <div className="flex h-full min-h-0 flex-col">
       <header className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-[#e5e1e4]">Inspect files</h1>
-        <p className="mt-1 text-sm text-[#a8a8b1]">View file details and verify checksums.</p>
+        <p className="mt-1 text-sm text-[#a8a8b1]">{OPERATIONS.inspect.description}</p>
       </header>
 
       <div className="mt-5 grid min-h-0 flex-1 grid-cols-[minmax(220px,4fr)_minmax(0,8fr)] gap-4">

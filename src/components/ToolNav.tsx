@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Operation } from "../types";
+import { MAX_PINNED_TOOLS } from "../lib/pinnedTools";
 import { OPERATIONS } from "../lib/operations";
-import { filterToolSections, type SidebarOperation } from "../lib/toolNavigation";
+import {
+  excludePinnedOperations,
+  filterToolSections,
+  pinnedOperationsForQuery,
+  type SidebarOperation,
+} from "../lib/toolNavigation";
+import { usePinnedTools } from "../store/usePinnedTools";
 import appIcon from "../../src-tauri/icons/128x128.png";
 import { RecentJobs } from "./RecentJobs";
 
@@ -435,6 +442,78 @@ export function OperationIcon({ operation }: { operation: SidebarOperation }) {
   return <Icon />;
 }
 
+function PinIcon({ pressed }: { pressed: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill={pressed ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 4h6l-1.2 6.2 2.2 2.3V14H8v-1.5l2.2-2.3L9 4Z" />
+      <path d="M12 14v7" />
+    </svg>
+  );
+}
+
+function ToolNavItem({
+  operation,
+  active,
+  disabled,
+  pinned,
+  pinDisabled,
+  onSelect,
+  onTogglePin,
+}: {
+  operation: SidebarOperation;
+  active: boolean;
+  disabled: boolean;
+  pinned: boolean;
+  pinDisabled: boolean;
+  onSelect: (operation: Operation) => void;
+  onTogglePin: (operation: SidebarOperation) => void;
+}) {
+  const meta = OPERATIONS[operation];
+  const pinLabel = pinned ? `Unpin ${meta.label}` : `Pin ${meta.label}`;
+
+  return (
+    <div className={`sidebar-tool-row group ${active ? "bg-[#353437]" : "hover:bg-[#201f22]"}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onSelect(operation)}
+        aria-current={active ? "page" : undefined}
+        className={`sidebar-tool-button ${
+          active ? "text-[#b0c6ff]" : "text-[#a9a9b2] group-hover:text-[#e5e1e4]"
+        }`}
+      >
+        <span
+          className={`sidebar-tool-icon ${active ? "text-[#b0c6ff]" : "text-[#8e909a] group-hover:text-[#c5c6d0]"}`}
+        >
+          <OperationIcon operation={operation} />
+        </span>
+        <span className="sidebar-tool-label">{meta.label}</span>
+      </button>
+      <button
+        type="button"
+        disabled={disabled || pinDisabled}
+        onClick={() => onTogglePin(operation)}
+        aria-pressed={pinned}
+        aria-label={pinLabel}
+        title={pinDisabled && !pinned ? `You can pin up to ${MAX_PINNED_TOOLS} tools` : pinLabel}
+        className={`sidebar-pin-button ${
+          pinned ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+        }`}
+      >
+        <PinIcon pressed={pinned} />
+      </button>
+    </div>
+  );
+}
+
 export function ToolNav({
   operation,
   homeActive,
@@ -446,9 +525,16 @@ export function ToolNav({
 }: ToolNavProps) {
   const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
-  const filteredSections = useMemo(() => filterToolSections(query), [query]);
+  const pinned = usePinnedTools((state) => state.operations);
+  const togglePinned = usePinnedTools((state) => state.toggle);
+  const visiblePinned = useMemo(() => pinnedOperationsForQuery(pinned, query), [pinned, query]);
+  const filteredSections = useMemo(
+    () => excludePinnedOperations(filterToolSections(query), pinned),
+    [pinned, query],
+  );
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const hasResults = filteredSections.length > 0;
+  const hasResults = visiblePinned.length > 0 || filteredSections.length > 0;
+  const pinListFull = pinned.length >= MAX_PINNED_TOOLS;
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -526,12 +612,35 @@ export function ToolNav({
           >
             <HomeIcon />
           </span>
-          Dashboard
+          <span className="sidebar-tool-label">Dashboard</span>
         </button>
       )}
 
       <div className="sidebar-scroll queue-scroll -mr-1 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
         <nav className="flex shrink-0 flex-col gap-4" aria-label="File tools">
+          {visiblePinned.length > 0 && (
+            <section aria-labelledby="tool-section-pinned">
+              <h2 id="tool-section-pinned" className="sidebar-section-title">
+                Pinned
+              </h2>
+
+              <div className="flex flex-col gap-1.5">
+                {visiblePinned.map((value) => (
+                  <ToolNavItem
+                    key={value}
+                    operation={value}
+                    active={!homeActive && !activityActive && value === operation}
+                    disabled={disabled}
+                    pinned
+                    pinDisabled={false}
+                    onSelect={selectOperation}
+                    onTogglePin={togglePinned}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {filteredSections.map((section) => (
             <section key={section.id} aria-labelledby={`tool-section-${section.id}`}>
               <h2 id={`tool-section-${section.id}`} className="sidebar-section-title">
@@ -539,32 +648,18 @@ export function ToolNav({
               </h2>
 
               <div className="flex flex-col gap-1.5">
-                {section.operations.map((value) => {
-                  const meta = OPERATIONS[value];
-                  const active = !homeActive && !activityActive && value === operation;
-
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => selectOperation(value)}
-                      aria-current={active ? "page" : undefined}
-                      className={`sidebar-tool-button group ${
-                        active
-                          ? "bg-[#353437] text-[#b0c6ff]"
-                          : "text-[#a9a9b2] hover:bg-[#201f22] hover:text-[#e5e1e4]"
-                      }`}
-                    >
-                      <span
-                        className={`sidebar-tool-icon ${active ? "text-[#b0c6ff]" : "text-[#8e909a] group-hover:text-[#c5c6d0]"}`}
-                      >
-                        <OperationIcon operation={value} />
-                      </span>
-                      {meta.label}
-                    </button>
-                  );
-                })}
+                {section.operations.map((value) => (
+                  <ToolNavItem
+                    key={value}
+                    operation={value}
+                    active={!homeActive && !activityActive && value === operation}
+                    disabled={disabled}
+                    pinned={false}
+                    pinDisabled={pinListFull}
+                    onSelect={selectOperation}
+                    onTogglePin={togglePinned}
+                  />
+                ))}
               </div>
             </section>
           ))}

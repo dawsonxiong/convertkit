@@ -12,7 +12,9 @@ import {
   RETIRED_OPERATIONS,
 } from "../src/lib/operations.ts";
 import {
+  excludePinnedOperations,
   filterToolSections,
+  pinnedOperationsForQuery,
   SIDEBAR_OPERATIONS,
   TOOL_SECTIONS,
 } from "../src/lib/toolNavigation.ts";
@@ -151,5 +153,31 @@ test("filters grouped tools by intent, format, and section without changing thei
     ["createArchive", "extractArchive", "rename", "inspect"],
   );
   assert.equal(filterToolSections("not-a-real-tool").length, 0);
-  assert.equal(filterToolSections("  "), TOOL_SECTIONS);
+  assert.deepEqual(filterToolSections("  "), TOOL_SECTIONS);
+});
+
+test("keeps pinned tools in pin order and out of their original groups", () => {
+  const pinned = ["inspect", "convert", "compressPdf"];
+  assert.deepEqual(pinnedOperationsForQuery(pinned, ""), pinned);
+  assert.deepEqual(pinnedOperationsForQuery(pinned, "pdf"), ["compressPdf"]);
+  assert.deepEqual(pinnedOperationsForQuery(pinned, "inspect"), ["inspect"]);
+  assert.deepEqual(pinnedOperationsForQuery(pinned, "not-a-real-tool"), []);
+
+  const unpinned = excludePinnedOperations(TOOL_SECTIONS, pinned);
+  assert.equal(
+    unpinned.find((section) => section.id === "general")?.operations.includes("convert"),
+    false,
+  );
+  assert.equal(
+    unpinned.find((section) => section.id === "organize")?.operations.includes("inspect"),
+    false,
+  );
+  assert.equal(
+    unpinned.find((section) => section.id === "pdf-documents")?.operations.includes("compressPdf"),
+    false,
+  );
+  assert.deepEqual(
+    unpinned.flatMap((section) => section.operations),
+    SIDEBAR_OPERATIONS.filter((operation) => !pinned.includes(operation)),
+  );
 });

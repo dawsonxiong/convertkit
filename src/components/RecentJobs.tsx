@@ -4,7 +4,7 @@ import { outputPathsForRecentJob, recentJobIssue, relativeJobTime } from "../lib
 import { useRecentJobActions } from "../hooks/useRecentJobActions";
 import { useRecentJobs } from "../store/useRecentJobs";
 import type { Operation } from "../types";
-import { OutputActionsMenu } from "./OutputActionsMenu";
+import { OpenInFinderButton } from "./OpenInFinderButton";
 
 interface RecentJobsProps {
   disabled: boolean;
@@ -73,20 +73,23 @@ export function RecentJobs({ disabled, onOpen, onViewAll, active }: RecentJobsPr
                   {relativeJobTime(job.completedAt)}
                 </span>
               </button>
-              {(outputPaths.length > 0 || (job.operation === "rename" && job.undoManifest)) && (
-                <OutputActionsMenu
+              <div className="mr-1 flex shrink-0 items-center gap-1">
+                <OpenInFinderButton
                   paths={outputPaths}
-                  sourceOperation={job.operation}
-                  onOpenOperation={onOpen}
-                  label={`Output actions for ${first.inputName}`}
                   disabled={disabled}
-                  onUndo={
-                    job.operation === "rename" && job.undoManifest ? () => undo(job) : undefined
-                  }
-                  undoLabel="Undo rename"
-                  triggerClassName="mr-1 opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-0"
+                  ariaLabel={`Open ${first.inputName} in Finder`}
                 />
-              )}
+                {job.operation === "rename" && job.undoManifest && (
+                  <button
+                    type="button"
+                    onClick={() => void undo(job)}
+                    disabled={disabled}
+                    className="text-button"
+                  >
+                    Undo rename
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

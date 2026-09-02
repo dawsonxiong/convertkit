@@ -5,8 +5,9 @@ import {
   parseSavedRecipes,
   retiredSavedRecipeIds,
   serializeSavedRecipes,
+  updatedSavedRecipe,
   type SavedRecipe,
-} from "../lib/savedRecipes";
+} from "../lib/savedRecipes.ts";
 
 const SAVED_RECIPES_KEY = "convertkit.savedRecipes.v2";
 const LEGACY_OUTPUT_PRESETS_KEY = "convertkit.outputPresets.v1";
@@ -48,6 +49,12 @@ interface SavedRecipeStore {
   recipes: SavedRecipe[];
   retiredRecipeIds: string[];
   addRecipe: (recipe: Omit<SavedRecipe, "id">) => SavedRecipe | null;
+  updateRecipe: (
+    id: string,
+    directory: string | null,
+    suffix: string,
+    settings?: SavedRecipe["settings"],
+  ) => SavedRecipe | null;
   deleteRecipe: (id: string) => void;
   finishRetiredRecipeMigration: () => void;
 }
@@ -61,6 +68,19 @@ export const useSavedRecipes = create<SavedRecipeStore>((set, get) => ({
     const candidate: SavedRecipe = { ...input, id: crypto.randomUUID() };
     const recipes = parseSavedRecipes(serializeSavedRecipes([...get().recipes, candidate]));
     const recipe = recipes.find((item) => item.id === candidate.id) ?? null;
+    if (!recipe) return null;
+    saveRecipes(recipes);
+    set({ recipes });
+    return recipe;
+  },
+  updateRecipe: (id, directory, suffix, settings) => {
+    const current = get().recipes.find((recipe) => recipe.id === id);
+    if (!current) return null;
+    const candidate = updatedSavedRecipe(current, directory, suffix, settings);
+    const recipes = parseSavedRecipes(
+      serializeSavedRecipes(get().recipes.map((recipe) => (recipe.id === id ? candidate : recipe))),
+    );
+    const recipe = recipes.find((item) => item.id === id) ?? null;
     if (!recipe) return null;
     saveRecipes(recipes);
     set({ recipes });

@@ -3,14 +3,18 @@ import test from "node:test";
 
 import {
   captureSavedRecipeSettings,
+  groupedSavedRecipes,
   MAX_SAVED_RECIPES,
   parseSavedRecipes,
   retiredSavedRecipeIds,
   SAVED_RECIPE_OPERATIONS,
+  savedRecipeDestinationLabel,
   savedRecipeMatches,
   savedRecipeNameExists,
   serializeSavedRecipes,
+  updatedSavedRecipe,
 } from "../src/lib/savedRecipes.ts";
+import { applySavedRecipe } from "../src/lib/recipeActions.ts";
 import { useAppStore } from "../src/store/useAppStore.ts";
 
 const legacyRecipe = {
@@ -266,6 +270,46 @@ test("matches names and the complete active recipe exactly", () => {
     }),
     true,
   );
+});
+
+test("updates a recipe in place without changing its identity", () => {
+  const updated = updatedSavedRecipe(legacyRecipe, "/tmp/out", "-v2");
+  assert.equal(updated.id, legacyRecipe.id);
+  assert.equal(updated.name, legacyRecipe.name);
+  assert.equal(updated.directory, "/tmp/out");
+  assert.equal(updated.suffix, "-v2");
+  assert.equal("settings" in updated, false);
+
+  const withSettings = updatedSavedRecipe(videoRecipe, "/tmp/web", "-small", {
+    ...videoRecipe.settings,
+    quality: "high",
+  });
+  assert.equal(withSettings.id, videoRecipe.id);
+  assert.equal(withSettings.settings?.kind, "encodeVideo");
+  assert.equal(withSettings.settings?.quality, "high");
+  assert.deepEqual(parseSavedRecipes(serializeSavedRecipes([withSettings])), [withSettings]);
+});
+
+test("groups recipes by tool order and labels destinations", () => {
+  assert.deepEqual(
+    groupedSavedRecipes([videoRecipe, legacyRecipe, ocrRecipe]).map((group) => group.operation),
+    ["convert", "encodeVideo", "recognizeText"],
+  );
+  assert.equal(savedRecipeDestinationLabel(legacyRecipe), "client · -final");
+  assert.equal(
+    savedRecipeDestinationLabel({ ...legacyRecipe, directory: null, suffix: "  " }),
+    "Source folder",
+  );
+});
+
+test("applies a recipe to the matching workspace session", () => {
+  applySavedRecipe(videoRecipe);
+  const state = useAppStore.getState();
+  assert.equal(state.operation, "encodeVideo");
+  assert.equal(state.outputDirectory, "/tmp/client");
+  assert.equal(state.outputSuffixes.encodeVideo, "-web");
+  assert.equal(state.videoEncodingPreset, "web");
+  assert.equal(state.videoResolution, "hd");
 });
 
 test("captures and applies operation-aware settings without file-specific choices", () => {

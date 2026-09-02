@@ -475,6 +475,5 @@ test("Activity distinguishes setup-aware Load job from legacy Open sources", asy
     readFile(new URL("../src/components/RecentJobs.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(history, /job\.setup \? "Load job" : "Open sources"/);
-  assert.match(history, /Load saved job setups or reopen sources from older history/);
   assert.match(recent, /job\.setup \? "Load job" : "Open sources"/);
 });

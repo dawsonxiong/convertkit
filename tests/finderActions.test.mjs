@@ -42,6 +42,12 @@ test("dashboard exposes explicit Finder setup without installing on mount", asyn
   assert.match(dashboard, /Enable in Finder/);
   assert.match(dashboard, /removeFinderQuickAction/);
   assert.match(dashboard, /installFinderQuickAction/);
+  assert.match(dashboard, /id="dashboard-recipes-title"/);
+  assert.match(dashboard, /onOpenRecipe\(recipe\)/);
+  assert.match(dashboard, /deleteSavedRecipe\(recipe\.id\)/);
+  assert.match(dashboard, /toggleSavedRecipeFinderAction/);
+  assert.match(dashboard, /FinderQuickActionButton/);
+  assert.match(dashboard, /No saved recipes/);
   const effect = dashboard.match(/useEffect\(\(\) => \{([\s\S]*?)\n  \}, \[onError\]\);/)?.[1] ?? "";
   assert.doesNotMatch(effect, /installFinderQuickAction/);
 });

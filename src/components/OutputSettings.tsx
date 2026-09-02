@@ -8,15 +8,15 @@ import {
   savedRecipeMatches,
   savedRecipeNameExists,
 } from "../lib/savedRecipes";
+import { applySavedRecipe, deleteSavedRecipe, toggleSavedRecipeFinderAction } from "../lib/recipeActions";
 import { useAppStore } from "../store/useAppStore";
 import { recipesForOperation, useSavedRecipes } from "../store/useSavedRecipes";
 import {
   getFinderQuickActionStatus,
-  installFinderQuickAction,
   isTauriRuntime,
-  removeFinderQuickAction,
   type FinderQuickActionStatus,
 } from "../lib/tauri";
+import { FinderQuickActionButton } from "./FinderQuickActionButton";
 
 function folderName(path: string) {
   const parts = path.split(/[\\/]/).filter(Boolean);
@@ -30,7 +30,6 @@ export function OutputSettings() {
   const setOutputDirectory = useAppStore((state) => state.setOutputDirectory);
   const setOutputSuffix = useAppStore((state) => state.setOutputSuffix);
   const setRejection = useAppStore((state) => state.setRejection);
-  const applyRecipeSettings = useAppStore((state) => state.applyRecipeSettings);
   const recipeSource = useAppStore(
     useShallow((state) => ({
       resizeWidth: state.resizeWidth,
@@ -65,10 +64,11 @@ export function OutputSettings() {
   );
   const recipes = useSavedRecipes((state) => state.recipes);
   const addRecipe = useSavedRecipes((state) => state.addRecipe);
-  const deleteRecipe = useSavedRecipes((state) => state.deleteRecipe);
+  const updateRecipe = useSavedRecipes((state) => state.updateRecipe);
   const [editingRecipe, setEditingRecipe] = useState(false);
   const [recipeName, setRecipeName] = useState("");
   const [recipeError, setRecipeError] = useState<string | null>(null);
+  const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
   const [finderStatus, setFinderStatus] = useState<FinderQuickActionStatus | null>(null);
   const [finderBusy, setFinderBusy] = useState(false);
   const currentSettings = useMemo(
@@ -82,6 +82,7 @@ export function OutputSettings() {
   const matchingRecipe = operationRecipes.find((recipe) =>
     savedRecipeMatches(recipe, operation, directory, suffix, currentSettings),
   );
+  const activeRecipe = operationRecipes.find((recipe) => recipe.id === activeRecipeId) ?? null;
 
   const chooseDirectory = async () => {
     const selected = await open({
@@ -93,11 +94,14 @@ export function OutputSettings() {
   };
 
   const applyRecipe = (id: string) => {
+    if (!id) {
+      setActiveRecipeId(null);
+      return;
+    }
     const recipe = operationRecipes.find((item) => item.id === id);
     if (!recipe) return;
-    setOutputDirectory(recipe.directory);
-    setOutputSuffix(operation, recipe.suffix);
-    applyRecipeSettings(recipe.settings);
+    setActiveRecipeId(recipe.id);
+    applySavedRecipe(recipe);
   };
 
   const closeRecipeEditor = () => {
@@ -110,7 +114,12 @@ export function OutputSettings() {
     setEditingRecipe(false);
     setRecipeName("");
     setRecipeError(null);
+    setActiveRecipeId(null);
   }, [operation]);
+
+  useEffect(() => {
+    if (matchingRecipe) setActiveRecipeId(matchingRecipe.id);
+  }, [matchingRecipe?.id]);
 
   useEffect(() => {
     let active = true;
@@ -132,12 +141,7 @@ export function OutputSettings() {
     if (!matchingRecipe || finderBusy) return;
     setFinderBusy(true);
     try {
-      if (finderStatus?.installed) {
-        await removeFinderQuickAction(matchingRecipe.id);
-        setFinderStatus({ ...finderStatus, installed: false });
-      } else {
-        setFinderStatus(await installFinderQuickAction(matchingRecipe.id, matchingRecipe.name));
-      }
+      setFinderStatus(await toggleSavedRecipeFinderAction(matchingRecipe, finderStatus));
     } catch (error) {
       console.error("Failed to update Finder Quick Action:", error);
       setRejection("The Finder Quick Action could not be updated");
@@ -146,14 +150,20 @@ export function OutputSettings() {
     }
   };
 
-  const removeRecipe = async () => {
+  const removeRecipe = () => {
     if (!matchingRecipe) return;
-    try {
-      await removeFinderQuickAction(matchingRecipe.id);
-    } catch (error) {
-      console.error("Failed to remove Finder Quick Action:", error);
-    }
-    deleteRecipe(matchingRecipe.id);
+    void deleteSavedRecipe(matchingRecipe.id);
+  };
+
+  const saveCurrentRecipe = () => {
+    if (!activeRecipe) return;
+    const updated = updateRecipe(
+      activeRecipe.id,
+      directory,
+      suffix,
+      currentSettings,
+    );
+    if (!updated) setRejection("That recipe could not be updated");
   };
 
   const saveRecipe = () => {
@@ -192,14 +202,26 @@ export function OutputSettings() {
     <section className="border-t border-[#2c2d33] pt-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-[13px] font-semibold text-white/85">Output</h3>
-        {!editingRecipe && (
-          <button
-            type="button"
-            onClick={() => setEditingRecipe(true)}
-            className="text-button text-button-accent text-button-large"
-          >
-            Save recipe
-          </button>
+        {!editingRecipe && !matchingRecipe && (
+          <div className="flex items-center gap-2">
+            {activeRecipe && (
+              <button
+                type="button"
+                onClick={saveCurrentRecipe}
+                className="text-button text-button-accent text-button-large"
+                title={`Update ${activeRecipe.name}`}
+              >
+                Update recipe
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditingRecipe(true)}
+              className={`text-button text-button-large ${activeRecipe ? "" : "text-button-accent"}`.trim()}
+            >
+              Save recipe
+            </button>
+          </div>
         )}
       </div>
 
@@ -226,34 +248,16 @@ export function OutputSettings() {
               {matchingRecipe && (
                 <>
                   {isTauriRuntime() && (
-                    <button
-                      type="button"
+                    <FinderQuickActionButton
+                      name={matchingRecipe.name}
+                      status={finderStatus}
+                      disabled={finderBusy}
                       onClick={() => void toggleFinderAction()}
-                      disabled={finderBusy || finderStatus?.supported === false}
-                      className={`icon-button ${finderStatus?.installed ? "text-[#b0c6ff]" : ""}`}
-                      aria-label={`${finderStatus?.installed ? "Remove" : "Add"} ${matchingRecipe.name} ${finderStatus?.installed ? "from" : "to"} Finder Quick Actions`}
-                      aria-pressed={finderStatus?.installed ?? false}
-                      title={
-                        finderStatus?.installed
-                          ? "Remove from Finder Quick Actions"
-                          : "Add to Finder Quick Actions"
-                      }
-                    >
-                      <svg
-                        className="size-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        aria-hidden="true"
-                      >
-                        <path d="M13 2 5 13h6l-1 9 9-12h-6V2Z" />
-                      </svg>
-                    </button>
+                    />
                   )}
                   <button
                     type="button"
-                    onClick={() => void removeRecipe()}
+                    onClick={removeRecipe}
                     className="icon-button"
                     aria-label={`Delete ${matchingRecipe.name} recipe`}
                     title="Delete recipe"
@@ -280,27 +284,27 @@ export function OutputSettings() {
             <label htmlFor="recipe-name" className="text-[11px] font-medium text-white/45">
               Name
             </label>
-            <div className="min-w-0">
+            <input
+              id="recipe-name"
+              type="text"
+              value={recipeName}
+              maxLength={MAX_SAVED_RECIPE_NAME_LENGTH}
+              autoFocus
+              spellCheck={false}
+              placeholder="Recipe name"
+              onChange={(event) => {
+                setRecipeName(event.target.value);
+                setRecipeError(null);
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Enter") saveRecipe();
+                if (event.key === "Escape") closeRecipeEditor();
+              }}
+              className="h-8 min-w-0 border border-[#44464f] bg-[#101012] px-2.5 text-[11px] text-white/80 outline-none placeholder:text-white/25 hover:border-white/25 focus:border-[#b0c6ff]"
+            />
+            <div className="col-start-2 min-w-0">
               <div className="grid min-w-0 grid-cols-2 gap-1.5">
-                <input
-                  id="recipe-name"
-                  type="text"
-                  value={recipeName}
-                  maxLength={MAX_SAVED_RECIPE_NAME_LENGTH}
-                  autoFocus
-                  spellCheck={false}
-                  placeholder="Recipe name"
-                  onChange={(event) => {
-                    setRecipeName(event.target.value);
-                    setRecipeError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    event.stopPropagation();
-                    if (event.key === "Enter") saveRecipe();
-                    if (event.key === "Escape") closeRecipeEditor();
-                  }}
-                  className="col-span-2 h-8 min-w-0 border border-[#44464f] bg-[#101012] px-2.5 text-[11px] text-white/80 outline-none placeholder:text-white/25 hover:border-white/25 focus:border-[#b0c6ff]"
-                />
                 <button type="button" onClick={saveRecipe} className="primary-button w-full">
                   Save
                 </button>

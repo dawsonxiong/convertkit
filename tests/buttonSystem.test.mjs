@@ -40,12 +40,16 @@ test("the compact sidebar scale is defined once", () => {
   assert.match(styles, /\.sidebar-tool-button\s*\{[^}]*height:\s*26px;[^}]*font-size:\s*11px;/s);
   assert.match(styles, /\.sidebar-tool-icon\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/s);
   assert.match(styles, /\.sidebar-section-title\s*\{[^}]*font-size:\s*11px;/s);
+  assert.match(styles, /\.sidebar-pin-button\s*\{[^}]*width:\s*18px;[^}]*height:\s*18px;/s);
+  assert.match(styles, /\.sidebar-tool-label\s*\{[^}]*line-height:\s*14px;/s);
 
   for (const selector of [
     ".sidebar-search",
     ".sidebar-section-title",
     ".sidebar-tool-button",
     ".sidebar-tool-icon",
+    ".sidebar-tool-label",
+    ".sidebar-pin-button",
   ]) {
     assert.equal(selectorCount(selector), 1, `${selector} should have one base declaration`);
   }
@@ -130,8 +134,14 @@ test("dense layouts retain their hierarchy and minimum-width affordances", async
   );
 
   assert.match(toolNav, /sidebar-scroll queue-scroll/);
+  assert.match(toolNav, /tool-section-pinned/);
+  assert.match(toolNav, /aria-pressed=\{pinned\}/);
+  assert.match(toolNav, /onTogglePin=\{togglePinned\}/);
   assert.match(output, /grid min-w-0 grid-cols-2 gap-1\.5/);
-  assert.match(output, /id="recipe-name"[\s\S]*?className="col-span-2 h-8/);
+  assert.match(output, /id="recipe-name"[\s\S]*?className="h-8 min-w-0 border/);
+  assert.match(output, /className="col-start-2 min-w-0"/);
+  assert.match(output, /!editingRecipe && !matchingRecipe &&/);
+  assert.match(output, /Update recipe/);
   assert.match(
     resize,
     />Dimensions<[\s\S]*?text-\[13px\] font-semibold|text-\[13px\] font-semibold[^>]*>Dimensions</,
@@ -148,7 +158,7 @@ test("dense layouts retain their hierarchy and minimum-width affordances", async
   );
   assert.match(
     styles,
-    /\.file-preview-trailing\s*\{[^}]*grid-column:\s*2;[^}]*flex-wrap:\s*wrap;/s,
+    /\.file-preview-trailing\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*flex-wrap:\s*wrap;/s,
   );
   assert.match(styles, /\.file-preview-format-select\s*\{[^}]*width:\s*min\(112px, 100%\);/s);
   assert.doesNotMatch(app, /rounded-lg|shadow-lg/);
@@ -183,31 +193,20 @@ test("every visible file-intake trigger follows the shared blocked state", async
   assert.equal(dropZone.match(/if \(disabled\) return;/g)?.length, 2);
 });
 
-test("output actions use one flat portal menu without decorative motion", async () => {
+test("completed outputs open in Finder with one compact icon button", async () => {
   const source = await readFile(
-    new URL("../src/components/OutputActionsMenu.tsx", import.meta.url),
+    new URL("../src/components/OpenInFinderButton.tsx", import.meta.url),
     "utf8",
   );
 
-  assert.match(source, /createPortal/);
-  assert.match(source, /aria-haspopup="menu"/);
-  assert.match(source, /aria-controls=\{open \? `\$\{menuId\}-menu` : undefined\}/);
-  assert.match(source, /role="menu"[\s\S]*?aria-labelledby=\{`\$\{menuId\}-trigger`\}/);
-  assert.match(source, /role="group"[\s\S]*?aria-label="Use output in"/);
-  assert.equal(
-    source.match(/\srole="menuitem"/g)?.length,
-    source.match(/\stabIndex=\{-1\}/g)?.length,
-    "every menu item should use the roving menu tab stop",
-  );
-  assert.match(source, /onKeyDown=\{handleTriggerKeyDown\}/);
-  assert.match(source, /onKeyDown=\{handleMenuKeyDown\}/);
-  for (const key of ["ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab"]) {
-    assert.match(source, new RegExp(`event\\.key === "${key}"|"${key}"`), `${key} is handled`);
-  }
-  assert.match(source, /if \(restoreFocus\) triggerRef\.current\?\.focus\(\)/);
-  assert.match(source, /close\(true\)/);
+  assert.match(source, /revealPathsInFinder\(outputPaths\)/);
+  assert.match(source, /Open in Finder/);
+  assert.match(source, /className=\{`icon-button \$\{className\}`\.trim\(\)\}/);
+  assert.match(source, /<circle cx="11" cy="11" r="6" \/>/);
+  assert.match(source, /event\.currentTarget\.blur\(\)/);
+  assert.match(source, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.doesNotMatch(source, /createPortal|aria-haspopup|role="menu"|Use in/);
   assert.doesNotMatch(source, /rounded|shadow|animate-|transition-/);
-  assert.match(styles, /\.output-menu-row\s*\{[^}]*height:\s*28px;[^}]*font-size:\s*11px;/s);
 });
 
 test("the compact recent preview links to an untruncated activity workspace", async () => {
@@ -224,7 +223,7 @@ test("the compact recent preview links to an untruncated activity workspace", as
   assert.doesNotMatch(history, /rounded|shadow|animate-|transition-/);
 });
 
-test("completed batches expose one compact aggregate output menu in the queue header", async () => {
+test("completed batches expose one compact Finder button in the queue header", async () => {
   const source = await readFile(
     new URL("../src/components/WorkspaceQueue.tsx", import.meta.url),
     "utf8",
@@ -236,5 +235,5 @@ test("completed batches expose one compact aggregate output menu in the queue he
   );
   assert.match(source, /state === "done" && results\.length > 1 && batchOutputPaths\.length > 0/);
   assert.match(source, /paths=\{batchOutputPaths\}/);
-  assert.match(source, /label="Output actions for completed batch"/);
+  assert.match(source, /ariaLabel="Open completed batch in Finder"/);
 });

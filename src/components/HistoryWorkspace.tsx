@@ -9,7 +9,7 @@ import {
 import { useRecentJobActions } from "../hooks/useRecentJobActions";
 import { useRecentJobs } from "../store/useRecentJobs";
 import type { Operation } from "../types";
-import { OutputActionsMenu } from "./OutputActionsMenu";
+import { OpenInFinderButton } from "./OpenInFinderButton";
 
 interface HistoryWorkspaceProps {
   disabled: boolean;
@@ -26,12 +26,10 @@ export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-end justify-between gap-4">
+      <header className="flex shrink-0 items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[#e5e1e4]">Activity</h1>
-          <p className="mt-1 text-sm text-[#a8a8b1]">
-            Load saved job setups or reopen sources from older history.
-          </p>
+          <p className="mt-1 text-sm text-[#a8a8b1]">Load a previous job or reopen its sources.</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -68,79 +66,90 @@ export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
           ) : (
             <div className="queue-scroll min-h-0 overflow-y-auto">
               {jobs.map((job) => {
-              const first = job.items[0];
-              const outputPaths = outputPathsForRecentJob(job);
-              const issue = recentJobIssue(job);
-              const errorKind = job.items.find((item) => item.errorKind)?.errorKind;
-              const actionLabel = job.setup ? "Load job" : "Open sources";
-              const title = errorKind
-                ? `${actionLabel}: ${first.inputName} — ${CONVERSION_ERROR_MESSAGES[errorKind]}`
-                : `${actionLabel}: ${first.inputName}`;
+                const first = job.items[0];
+                const outputPaths = outputPathsForRecentJob(job);
+                const issue = recentJobIssue(job);
+                const errorKind = job.items.find((item) => item.errorKind)?.errorKind;
+                const actionLabel = job.setup ? "Load job" : "Open sources";
+                const title = errorKind
+                  ? `${actionLabel}: ${first.inputName} — ${CONVERSION_ERROR_MESSAGES[errorKind]}`
+                  : `${actionLabel}: ${first.inputName}`;
 
-              return (
-                <article
-                  key={job.id}
-                  className="group flex min-h-14 items-center border-b border-white/8 last:border-b-0 hover:bg-[#18181b]"
-                >
-                  <button
-                    type="button"
-                    onClick={() => void (job.setup ? load(job) : reopen(job))}
-                    disabled={disabled}
-                    title={title}
-                    className="min-w-0 flex-1 px-4 py-2.5 text-left disabled:opacity-40"
+                return (
+                  <article
+                    key={job.id}
+                    className="group flex min-h-14 items-center border-b border-white/8 last:border-b-0 hover:bg-[#18181b]"
                   >
-                    <span className="block truncate text-[13px] font-medium text-[#e5e1e4]">
-                      {job.items.length > 1
-                        ? `${first.inputName} +${job.items.length - 1}`
-                        : first.inputName}
-                    </span>
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-white/35">
-                      <span className={job.setup ? "text-[#b0c6ff]" : "text-white/40"}>
-                        {actionLabel}
+                    <button
+                      type="button"
+                      onClick={() => void (job.setup ? load(job) : reopen(job))}
+                      disabled={disabled}
+                      title={title}
+                      className="min-w-0 flex-1 px-4 py-2.5 text-left disabled:opacity-40"
+                    >
+                      <span className="block truncate text-[13px] font-medium text-[#e5e1e4]">
+                        {job.items.length > 1
+                          ? `${first.inputName} +${job.items.length - 1}`
+                          : first.inputName}
                       </span>
-                      <span aria-hidden="true" className="text-white/15">
-                        ·
+                      <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-white/35">
+                        <span className={job.setup ? "text-[#b0c6ff]" : "text-white/40"}>
+                          {actionLabel}
+                        </span>
+                        <span aria-hidden="true" className="text-white/15">
+                          ·
+                        </span>
+                        <span>{OPERATIONS[job.operation].label}</span>
+                        <span aria-hidden="true" className="text-white/15">
+                          ·
+                        </span>
+                        <span className={issue ? "text-red-300/65" : "text-white/40"}>
+                          {recentJobOutcome(job)}
+                        </span>
+                        {outputPaths.length > job.items.length && (
+                          <>
+                            <span aria-hidden="true" className="text-white/15">
+                              ·
+                            </span>
+                            <span>{outputPaths.length} outputs</span>
+                          </>
+                        )}
+                        <span aria-hidden="true" className="text-white/15">
+                          ·
+                        </span>
+                        <time dateTime={new Date(job.completedAt).toISOString()}>
+                          {relativeJobTime(job.completedAt)}
+                        </time>
                       </span>
-                      <span>{OPERATIONS[job.operation].label}</span>
-                      <span aria-hidden="true" className="text-white/15">
-                        ·
-                      </span>
-                      <span className={issue ? "text-red-300/65" : "text-white/40"}>
-                        {recentJobOutcome(job)}
-                      </span>
-                      {outputPaths.length > job.items.length && (
-                        <>
-                          <span aria-hidden="true" className="text-white/15">
-                            ·
-                          </span>
-                          <span>{outputPaths.length} outputs</span>
-                        </>
-                      )}
-                      <span aria-hidden="true" className="text-white/15">
-                        ·
-                      </span>
-                      <time dateTime={new Date(job.completedAt).toISOString()}>
-                        {relativeJobTime(job.completedAt)}
-                      </time>
-                    </span>
-                  </button>
+                    </button>
 
-                  <OutputActionsMenu
-                    paths={outputPaths}
-                    sourceOperation={job.operation}
-                    onOpenOperation={onOpen}
-                    label={`Actions for ${first.inputName}`}
-                    disabled={disabled}
-                    onUndo={
-                      job.operation === "rename" && job.undoManifest ? () => undo(job) : undefined
-                    }
-                    undoLabel="Undo rename"
-                    onRemove={() => removeJob(job.id)}
-                    removeLabel="Remove from history"
-                    triggerClassName="mr-3"
-                  />
-                </article>
-              );
+                    <div className="mr-3 flex shrink-0 items-center gap-2">
+                      <OpenInFinderButton
+                        paths={outputPaths}
+                        disabled={disabled}
+                        ariaLabel={`Open ${first.inputName} in Finder`}
+                      />
+                      {job.operation === "rename" && job.undoManifest && (
+                        <button
+                          type="button"
+                          onClick={() => void undo(job)}
+                          disabled={disabled}
+                          className="text-button"
+                        >
+                          Undo rename
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeJob(job.id)}
+                        disabled={disabled}
+                        className="text-button"
+                      >
+                        Remove from history
+                      </button>
+                    </div>
+                  </article>
+                );
               })}
             </div>
           )}

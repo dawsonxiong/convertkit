@@ -149,7 +149,7 @@ select {
   }
 
   .file-preview-trailing {
-    grid-column: 2;
+    grid-column: 1 / -1;
     grid-row: 2;
     max-width: 100%;
     flex-wrap: wrap;
@@ -213,7 +213,7 @@ select {
 
 .sidebar-section-title {
   margin-bottom: 4px;
-  padding: 0 12px;
+  padding: 0 8px;
   color: rgb(255 255 255 / 40%);
   font-size: 11px;
   font-weight: 500;
@@ -231,7 +231,7 @@ select {
   padding: 0 8px;
   font-size: 11px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 14px;
   text-align: left;
   white-space: nowrap;
 }
@@ -241,10 +241,67 @@ select {
   opacity: 0.5;
 }
 
+.sidebar-tool-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.sidebar-tool-row > .sidebar-tool-button {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .sidebar-tool-icon {
+  display: grid;
   width: 14px;
   height: 14px;
   flex-shrink: 0;
+  place-items: center;
+}
+
+.sidebar-tool-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.sidebar-tool-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-pin-button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  place-items: center;
+  margin-right: 4px;
+  color: rgb(255 255 255 / 28%);
+}
+
+.sidebar-pin-button svg {
+  width: 12px;
+  height: 12px;
+}
+
+.sidebar-pin-button:hover:not(:disabled) {
+  color: rgb(255 255 255 / 75%);
+}
+
+.sidebar-pin-button[aria-pressed="true"] {
+  color: rgb(176 198 255 / 80%);
+}
+
+.sidebar-pin-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
 }
 
 .queue-bulk-select {
@@ -527,34 +584,6 @@ select {
 .icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.3;
-}
-
-.output-menu-row {
-  display: flex;
-  width: 100%;
-  height: 28px;
-  align-items: center;
-  padding: 0 8px;
-  color: rgb(255 255 255 / 68%);
-  font-size: 11px;
-  font-weight: 500;
-  text-align: left;
-}
-
-.output-menu-row:hover,
-.output-menu-row:focus-visible {
-  background: rgb(255 255 255 / 6%);
-  color: #e5e1e4;
-  outline: none;
-}
-
-.output-menu-row-danger {
-  color: rgb(252 165 165 / 68%);
-}
-
-.output-menu-row-danger:hover,
-.output-menu-row-danger:focus-visible {
-  color: #fecaca;
 }
 
 * {

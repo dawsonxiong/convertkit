@@ -7,9 +7,8 @@ import { readFileThumbnail } from "../lib/tauri";
 import { archiveFormatLabel, archivePathLabel } from "../lib/archive";
 import { CONVERSION_ERROR_MESSAGES } from "../lib/conversionErrorMessages";
 import { outputPathsForResult } from "../lib/outputHandoff";
-import type { ActiveOperation } from "../lib/operations";
 import type { AudioTrack, FileInfo } from "../types";
-import { OutputActionsMenu } from "./OutputActionsMenu";
+import { OpenInFinderButton } from "./OpenInFinderButton";
 
 const PREVIEWABLE = new Set(["image", "vector", "document", "video"]);
 
@@ -70,7 +69,6 @@ interface FilePreviewProps {
   showResultAction?: boolean;
   previewName?: string;
   previewInvalid?: boolean;
-  onOpenOperation: (operation: ActiveOperation) => void;
 }
 
 export function FilePreview({
@@ -84,7 +82,6 @@ export function FilePreview({
   showResultAction = true,
   previewName,
   previewInvalid = false,
-  onOpenOperation,
 }: FilePreviewProps) {
   const operation = useAppStore((s) => s.operation);
   const appState = useAppStore((s) => s.state);
@@ -557,11 +554,9 @@ export function FilePreview({
           )}
 
           {status === "completed" && queueItem?.result && showResultAction && (
-            <OutputActionsMenu
+            <OpenInFinderButton
               paths={outputPathsForResult(queueItem.result)}
-              sourceOperation={operation}
-              onOpenOperation={onOpenOperation}
-              label={`Output actions for ${file.name}`}
+              ariaLabel={`Open ${file.name} in Finder`}
             />
           )}
 
