@@ -135,6 +135,8 @@ test("dense layouts retain their hierarchy and minimum-width affordances", async
 
   assert.match(toolNav, /sidebar-scroll queue-scroll/);
   assert.match(toolNav, /tool-section-pinned/);
+  assert.match(toolNav, /aria-expanded=\{expanded\}/);
+  assert.match(toolNav, /sidebar-section-chevron/);
   assert.match(toolNav, /aria-pressed=\{pinned\}/);
   assert.match(toolNav, /onTogglePin=\{togglePinned\}/);
   assert.match(output, /grid min-w-0 grid-cols-2 gap-1\.5/);

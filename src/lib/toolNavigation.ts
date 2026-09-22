@@ -2,12 +2,6 @@ import { OPERATIONS, type ActiveOperation } from "./operations.ts";
 
 export type SidebarOperation = ActiveOperation;
 
-interface ToolSection {
-  id: string;
-  label: string;
-  operations: readonly SidebarOperation[];
-}
-
 export const TOOL_SECTIONS = [
   {
     id: "general",
@@ -49,7 +43,15 @@ export const TOOL_SECTIONS = [
     label: "Organize",
     operations: ["createArchive", "extractArchive", "rename", "inspect"],
   },
-] as const satisfies readonly ToolSection[];
+] as const;
+
+export type ToolSectionId = (typeof TOOL_SECTIONS)[number]["id"];
+
+export interface ToolSection {
+  id: ToolSectionId;
+  label: string;
+  operations: readonly SidebarOperation[];
+}
 
 export const SIDEBAR_OPERATIONS: readonly SidebarOperation[] = TOOL_SECTIONS.flatMap(
   (section) => section.operations,

@@ -41,6 +41,9 @@ require_version ggml "$expected_ggml_version"
 require_version libomp "$expected_libomp_version"
 
 whisper_prefix=$(brew --prefix whisper-cpp)
+if [ ! -d "$whisper_prefix" ]; then
+  whisper_prefix="$(brew --prefix)/opt/whisper-cpp"
+fi
 ggml_prefix=$(brew --prefix ggml)
 libomp_prefix=$(brew --prefix libomp)
 binary_source="$whisper_prefix/bin/whisper-cli"

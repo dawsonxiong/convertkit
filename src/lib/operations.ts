@@ -172,7 +172,7 @@ export const OPERATIONS: Record<Operation, OperationMeta> = {
   generateThumbnails: {
     label: "Video thumbnails",
     pageTitle: "Video thumbnails",
-    description: "Create one midpoint still or contact sheet from each video.",
+    description: "Create one midpoint still from each video.",
     dropLabel: "Drop videos here",
     dropDescription: "MP4, MOV, WebM, MKV, AVI, and M4V.",
     actionLabel: "Generate",

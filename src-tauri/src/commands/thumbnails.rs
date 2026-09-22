@@ -13,17 +13,23 @@ use crate::progress::ProgressPayload;
 use super::output::{prepare_output, OutputOptions};
 
 const VERIFY_TIMEOUT: Duration = Duration::from_secs(15);
-const CONTACT_COLUMNS: u32 = 4;
-const CONTACT_ROWS: u32 = 3;
-const CONTACT_TILE_WIDTH: u32 = 320;
-const CONTACT_TILE_HEIGHT: u32 = 180;
-const CONTACT_PADDING: u32 = 4;
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbnailMode {
     Frame,
-    ContactSheet,
+}
+
+impl<'de> Deserialize<'de> for ThumbnailMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "frame" | "contactSheet" => Ok(Self::Frame),
+            other => Err(serde::de::Error::unknown_variant(other, &["frame"])),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -67,25 +73,16 @@ pub(super) fn thumbnail_support(format: ThumbnailOutputFormat) -> Result<(), Vec
 fn thumbnail_arguments(
     input: &Path,
     output: &Path,
-    mode: ThumbnailMode,
     format: ThumbnailOutputFormat,
     duration_ms: u64,
 ) -> Vec<OsString> {
+    let midpoint_seconds = duration_ms as f64 / 2_000.0;
     let mut arguments = vec![
         OsString::from("-hide_banner"),
         OsString::from("-loglevel"),
         OsString::from("error"),
-    ];
-
-    if mode == ThumbnailMode::Frame {
-        let midpoint_seconds = duration_ms as f64 / 2_000.0;
-        arguments.extend([
-            OsString::from("-ss"),
-            OsString::from(format!("{midpoint_seconds:.3}")),
-        ]);
-    }
-
-    arguments.extend([
+        OsString::from("-ss"),
+        OsString::from(format!("{midpoint_seconds:.3}")),
         OsString::from("-i"),
         input.as_os_str().to_os_string(),
         OsString::from("-map"),
@@ -94,19 +91,10 @@ fn thumbnail_arguments(
         OsString::from("-sn"),
         OsString::from("-dn"),
         OsString::from("-vf"),
-        OsString::from(match mode {
-            ThumbnailMode::Frame => {
-                "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2".to_string()
-            }
-            ThumbnailMode::ContactSheet => {
-                let duration_seconds = (duration_ms as f64 / 1_000.0).max(0.001);
-                let sample_rate = (CONTACT_COLUMNS * CONTACT_ROWS) as f64 / duration_seconds;
-                format!(
-                    "fps={sample_rate:.8},scale={CONTACT_TILE_WIDTH}:{CONTACT_TILE_HEIGHT}:force_original_aspect_ratio=decrease,pad={CONTACT_TILE_WIDTH}:{CONTACT_TILE_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=0x101012,tile={CONTACT_COLUMNS}x{CONTACT_ROWS}:padding={CONTACT_PADDING}:margin=0"
-                )
-            }
-        }),
-    ]);
+        OsString::from(
+            "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+        ),
+    ];
     arguments.extend(format.codec_arguments().iter().map(OsString::from));
     arguments.extend([
         OsString::from("-frames:v"),
@@ -137,7 +125,6 @@ struct ImageProbeStream {
 
 async fn verify_thumbnail(
     output: &Path,
-    mode: ThumbnailMode,
     format: ThumbnailOutputFormat,
 ) -> Result<(), ConversionError> {
     verification::nonempty_file(output)?;
@@ -180,14 +167,7 @@ async fn verify_thumbnail(
     let codec = stream
         .and_then(|value| value.codec_name.as_deref())
         .unwrap_or_default();
-    let dimensions_valid = match mode {
-        ThumbnailMode::Frame => width > 0 && height > 0 && width <= 1_280 && height <= 720,
-        ThumbnailMode::ContactSheet => {
-            width == CONTACT_COLUMNS * CONTACT_TILE_WIDTH + (CONTACT_COLUMNS - 1) * CONTACT_PADDING
-                && height
-                    == CONTACT_ROWS * CONTACT_TILE_HEIGHT + (CONTACT_ROWS - 1) * CONTACT_PADDING
-        }
-    };
+    let dimensions_valid = width > 0 && height > 0 && width <= 1_280 && height <= 720;
     if !probe.status.success() || codec != format.encoder() || !dimensions_valid {
         return Err(ConversionError::ProcessFailed {
             message: "The generated image could not be verified".into(),
@@ -201,7 +181,7 @@ async fn verify_thumbnail(
 pub(super) async fn generate_thumbnail(
     app: AppHandle,
     input_path: String,
-    mode: ThumbnailMode,
+    _mode: ThumbnailMode,
     output_format: ThumbnailOutputFormat,
     job_id: Option<String>,
     output_options: Option<OutputOptions>,
@@ -238,10 +218,7 @@ pub(super) async fn generate_thumbnail(
     let active_job = super::jobs::ActiveJobGuard::register(app.clone(), job_id)?;
     let cancel_token = active_job.cancel_token();
     let event_job_id = active_job.job_id().to_owned();
-    let stage = match mode {
-        ThumbnailMode::Frame => "Generating thumbnail",
-        ThumbnailMode::ContactSheet => "Generating contact sheet",
-    };
+    let stage = "Generating thumbnail";
     let _ = app.emit(
         "conversion-progress",
         ProgressPayload {
@@ -256,7 +233,6 @@ pub(super) async fn generate_thumbnail(
         thumbnail_arguments(
             &input,
             prepared.working_path(),
-            mode,
             output_format,
             duration_ms,
         ),
@@ -271,7 +247,7 @@ pub(super) async fn generate_thumbnail(
     if cancel_token.is_cancelled() {
         return Err(ConversionError::Cancelled);
     }
-    verify_thumbnail(prepared.working_path(), mode, output_format).await?;
+    verify_thumbnail(prepared.working_path(), output_format).await?;
 
     let mut result = prepared.commit(ConversionResult {
         output_path: String::new(),
@@ -296,15 +272,10 @@ pub(super) async fn generate_thumbnail(
 mod tests {
     use super::*;
 
-    fn arguments(
-        mode: ThumbnailMode,
-        format: ThumbnailOutputFormat,
-        duration_ms: u64,
-    ) -> Vec<String> {
+    fn arguments(format: ThumbnailOutputFormat, duration_ms: u64) -> Vec<String> {
         thumbnail_arguments(
             Path::new("input movie.mkv"),
             Path::new("output image.jpg"),
-            mode,
             format,
             duration_ms,
         )
@@ -315,30 +286,13 @@ mod tests {
 
     #[test]
     fn midpoint_thumbnail_maps_only_one_video_frame() {
-        let arguments = arguments(ThumbnailMode::Frame, ThumbnailOutputFormat::Jpeg, 10_000);
+        let arguments = arguments(ThumbnailOutputFormat::Jpeg, 10_000);
         assert!(arguments.windows(2).any(|pair| pair == ["-ss", "5.000"]));
         assert!(arguments.windows(2).any(|pair| pair == ["-map", "0:v:0"]));
         assert!(arguments.windows(2).any(|pair| pair == ["-frames:v", "1"]));
         assert!(arguments.windows(2).any(|pair| pair == ["-c:v", "mjpeg"]));
         assert!(arguments.contains(&"-an".into()));
         assert!(arguments.contains(&"-sn".into()));
-    }
-
-    #[test]
-    fn contact_sheet_uses_a_fixed_twelve_frame_grid() {
-        let arguments = arguments(
-            ThumbnailMode::ContactSheet,
-            ThumbnailOutputFormat::Png,
-            4_000,
-        );
-        let filter = arguments
-            .windows(2)
-            .find_map(|pair| (pair[0] == "-vf").then_some(pair[1].as_str()))
-            .expect("video filter");
-        assert!(filter.contains("fps=3.00000000"));
-        assert!(filter.contains("tile=4x3"));
-        assert!(arguments.windows(2).any(|pair| pair == ["-c:v", "png"]));
-        assert!(!arguments.contains(&"-ss".into()));
     }
 
     #[tokio::test]
@@ -373,19 +327,16 @@ mod tests {
         assert!(generated.success());
         let original = std::fs::read(&input).expect("source bytes");
 
-        for (mode, format) in [
-            (ThumbnailMode::Frame, ThumbnailOutputFormat::Jpeg),
-            (ThumbnailMode::ContactSheet, ThumbnailOutputFormat::Png),
-        ] {
+        for format in [ThumbnailOutputFormat::Jpeg, ThumbnailOutputFormat::Png] {
             let output = directory
                 .path()
-                .join(format!("output-{:?}.{}", mode, format.extension()));
+                .join(format!("output.{}", format.extension()));
             let status = std::process::Command::new(&ffmpeg)
-                .args(thumbnail_arguments(&input, &output, mode, format, 4_000))
+                .args(thumbnail_arguments(&input, &output, format, 4_000))
                 .status()
                 .expect("thumbnail generation");
             assert!(status.success());
-            verify_thumbnail(&output, mode, format)
+            verify_thumbnail(&output, format)
                 .await
                 .expect("verified thumbnail");
         }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { Operation } from "../types";
 import { MAX_PINNED_TOOLS } from "../lib/pinnedTools";
 import { OPERATIONS } from "../lib/operations";
@@ -9,6 +9,8 @@ import {
   type SidebarOperation,
 } from "../lib/toolNavigation";
 import { usePinnedTools } from "../store/usePinnedTools";
+import { useCollapsedSidebarSections } from "../store/useCollapsedSidebarSections";
+import type { SidebarSectionId } from "../lib/collapsedSidebarSections";
 import appIcon from "../../src-tauri/icons/128x128.png";
 import { RecentJobs } from "./RecentJobs";
 
@@ -459,6 +461,62 @@ function PinIcon({ pressed }: { pressed: boolean }) {
   );
 }
 
+function SectionChevron() {
+  return (
+    <svg
+      className="sidebar-section-chevron"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m2.5 4.5 3.5 3.5 3.5-3.5" />
+    </svg>
+  );
+}
+
+function ToolSection({
+  sectionId,
+  headingId,
+  label,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  sectionId: SidebarSectionId;
+  headingId: string;
+  label: string;
+  collapsed: boolean;
+  onToggle: (sectionId: SidebarSectionId) => void;
+  children: ReactNode;
+}) {
+  const expanded = !collapsed;
+
+  return (
+    <section aria-labelledby={headingId}>
+      <button
+        type="button"
+        id={headingId}
+        aria-expanded={expanded}
+        aria-controls={`${headingId}-items`}
+        onClick={() => onToggle(sectionId)}
+        className="sidebar-section-title"
+      >
+        {label}
+        <SectionChevron />
+      </button>
+      {expanded && (
+        <div id={`${headingId}-items`} className="flex flex-col gap-1.5">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ToolNavItem({
   operation,
   active,
@@ -527,6 +585,8 @@ export function ToolNav({
   const searchInput = useRef<HTMLInputElement>(null);
   const pinned = usePinnedTools((state) => state.operations);
   const togglePinned = usePinnedTools((state) => state.toggle);
+  const collapsedSections = useCollapsedSidebarSections((state) => state.sections);
+  const toggleCollapsedSection = useCollapsedSidebarSections((state) => state.toggle);
   const visiblePinned = useMemo(() => pinnedOperationsForQuery(pinned, query), [pinned, query]);
   const filteredSections = useMemo(
     () => excludePinnedOperations(filterToolSections(query), pinned),
@@ -535,6 +595,9 @@ export function ToolNav({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const hasResults = visiblePinned.length > 0 || filteredSections.length > 0;
   const pinListFull = pinned.length >= MAX_PINNED_TOOLS;
+  const searching = Boolean(normalizedQuery);
+  const sectionCollapsed = (sectionId: SidebarSectionId) =>
+    !searching && collapsedSections.includes(sectionId);
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -619,49 +682,50 @@ export function ToolNav({
       <div className="sidebar-scroll queue-scroll -mr-1 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
         <nav className="flex shrink-0 flex-col gap-4" aria-label="File tools">
           {visiblePinned.length > 0 && (
-            <section aria-labelledby="tool-section-pinned">
-              <h2 id="tool-section-pinned" className="sidebar-section-title">
-                Pinned
-              </h2>
-
-              <div className="flex flex-col gap-1.5">
-                {visiblePinned.map((value) => (
-                  <ToolNavItem
-                    key={value}
-                    operation={value}
-                    active={!homeActive && !activityActive && value === operation}
-                    disabled={disabled}
-                    pinned
-                    pinDisabled={false}
-                    onSelect={selectOperation}
-                    onTogglePin={togglePinned}
-                  />
-                ))}
-              </div>
-            </section>
+            <ToolSection
+              sectionId="pinned"
+              headingId="tool-section-pinned"
+              label="Pinned"
+              collapsed={sectionCollapsed("pinned")}
+              onToggle={toggleCollapsedSection}
+            >
+              {visiblePinned.map((value) => (
+                <ToolNavItem
+                  key={value}
+                  operation={value}
+                  active={!homeActive && !activityActive && value === operation}
+                  disabled={disabled}
+                  pinned
+                  pinDisabled={false}
+                  onSelect={selectOperation}
+                  onTogglePin={togglePinned}
+                />
+              ))}
+            </ToolSection>
           )}
 
           {filteredSections.map((section) => (
-            <section key={section.id} aria-labelledby={`tool-section-${section.id}`}>
-              <h2 id={`tool-section-${section.id}`} className="sidebar-section-title">
-                {section.label}
-              </h2>
-
-              <div className="flex flex-col gap-1.5">
-                {section.operations.map((value) => (
-                  <ToolNavItem
-                    key={value}
-                    operation={value}
-                    active={!homeActive && !activityActive && value === operation}
-                    disabled={disabled}
-                    pinned={false}
-                    pinDisabled={pinListFull}
-                    onSelect={selectOperation}
-                    onTogglePin={togglePinned}
-                  />
-                ))}
-              </div>
-            </section>
+            <ToolSection
+              key={section.id}
+              sectionId={section.id}
+              headingId={`tool-section-${section.id}`}
+              label={section.label}
+              collapsed={sectionCollapsed(section.id)}
+              onToggle={toggleCollapsedSection}
+            >
+              {section.operations.map((value) => (
+                <ToolNavItem
+                  key={value}
+                  operation={value}
+                  active={!homeActive && !activityActive && value === operation}
+                  disabled={disabled}
+                  pinned={false}
+                  pinDisabled={pinListFull}
+                  onSelect={selectOperation}
+                  onTogglePin={togglePinned}
+                />
+              ))}
+            </ToolSection>
           ))}
 
           {!hasResults && <p className="px-2 py-2 text-[11px] text-white/35">No matching tools</p>}

@@ -123,7 +123,7 @@ test("retains thumbnail layout and format across utility switches", () => {
 
   useAppStore.getState().setOperation("generateThumbnails");
   useAppStore.getState().addFiles([file]);
-  useAppStore.getState().setThumbnailMode("contactSheet");
+  useAppStore.getState().setThumbnailMode("frame");
   useAppStore.getState().setThumbnailOutputFormat("png");
   useAppStore.getState().setOperation("convert");
   useAppStore.getState().setOperation("generateThumbnails");
@@ -133,7 +133,7 @@ test("retains thumbnail layout and format across utility switches", () => {
     restored.files.map((item) => item.path),
     [file.path],
   );
-  assert.equal(restored.thumbnailMode, "contactSheet");
+  assert.equal(restored.thumbnailMode, "frame");
   assert.equal(restored.thumbnailOutputFormat, "png");
 
   restored.reset();

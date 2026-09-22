@@ -53,7 +53,7 @@ const VIDEO_QUALITIES = new Set<VideoQuality>(["high", "balanced", "smallest"]);
 const VIDEO_COMPRESSION_GOALS = new Set<VideoCompressionGoal>(["quality", "fileSize"]);
 const AUDIO_COMPRESSION_PRESETS = new Set<AudioCompressionPreset>(["high", "balanced", "smallest"]);
 const SUBTITLE_FORMATS = new Set<SubtitleOutputFormat>(["srt", "vtt"]);
-const THUMBNAIL_MODES = new Set<ThumbnailMode>(["frame", "contactSheet"]);
+const THUMBNAIL_MODES = new Set<ThumbnailMode>(["frame"]);
 const THUMBNAIL_FORMATS = new Set<ThumbnailOutputFormat>(["jpeg", "png"]);
 const PDF_SPLIT_MODES = new Set<PdfSplitMode>(["everyPage", "extract"]);
 const PDF_PAGE_FORMATS = new Set<PdfPageImageFormat>(["png", "jpeg"]);
@@ -296,11 +296,12 @@ export function normalizeSavedRecipeSettings(
       return isEnumValue(OCR_OUTPUT_FORMATS, value.outputFormat)
         ? { kind: operation, outputFormat: value.outputFormat }
         : null;
-    case "generateThumbnails":
-      return isEnumValue(THUMBNAIL_MODES, value.mode) &&
-        isEnumValue(THUMBNAIL_FORMATS, value.outputFormat)
-        ? { kind: operation, mode: value.mode, outputFormat: value.outputFormat }
+    case "generateThumbnails": {
+      const mode = value.mode === "contactSheet" ? "frame" : value.mode;
+      return isEnumValue(THUMBNAIL_MODES, mode) && isEnumValue(THUMBNAIL_FORMATS, value.outputFormat)
+        ? { kind: operation, mode, outputFormat: value.outputFormat }
         : null;
+    }
     case "splitPdf":
       return isEnumValue(PDF_SPLIT_MODES, value.mode)
         ? { kind: operation, mode: value.mode }

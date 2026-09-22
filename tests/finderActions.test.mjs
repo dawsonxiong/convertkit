@@ -39,9 +39,14 @@ test("dashboard exposes explicit Finder setup without installing on mount", asyn
     "utf8",
   );
 
-  assert.match(dashboard, /Enable in Finder/);
-  assert.match(dashboard, /removeFinderQuickAction/);
-  assert.match(dashboard, /installFinderQuickAction/);
+  assert.match(dashboard, /Check the tools to add to a file's Quick Actions menu/);
+  assert.match(dashboard, /Disable all/);
+  assert.match(dashboard, /Enable all/);
+  assert.match(dashboard, /m5 12 4 4 10-10/);
+  assert.match(dashboard, /toggleFinderAction\(action\)/);
+  assert.doesNotMatch(dashboard, /Enable in Finder|Remove from Finder/);
+  assert.match(dashboard, /removeFinderQuickAction\(action\.id\)/);
+  assert.match(dashboard, /installFinderQuickAction\(action\.id, action\.label\)/);
   assert.match(dashboard, /id="dashboard-recipes-title"/);
   assert.match(dashboard, /onOpenRecipe\(recipe\)/);
   assert.match(dashboard, /deleteSavedRecipe\(recipe\.id\)/);

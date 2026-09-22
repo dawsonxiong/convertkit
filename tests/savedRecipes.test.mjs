@@ -333,7 +333,7 @@ test("captures and applies operation-aware settings without file-specific choice
     videoTargetSizeBytes: null,
     loudnessPreset: "standard",
     subtitleOutputFormat: "vtt",
-    thumbnailMode: "contactSheet",
+    thumbnailMode: "frame",
     thumbnailOutputFormat: "png",
     pdfSplitMode: "extract",
     pdfPageImageFormat: "jpeg",
@@ -475,7 +475,7 @@ test("validates every supported operation settings shape", () => {
       id: "thumbnails",
       name: "Thumbnails",
       operation: "generateThumbnails",
-      settings: { kind: "generateThumbnails", mode: "contactSheet", outputFormat: "png" },
+      settings: { kind: "generateThumbnails", mode: "frame", outputFormat: "png" },
     },
     {
       ...legacyRecipe,
@@ -517,6 +517,25 @@ test("validates every supported operation settings shape", () => {
     },
   ];
   assert.deepEqual(parseSavedRecipes(serializeSavedRecipes(recipes)), recipes);
+});
+
+test("upgrades saved contact-sheet recipes to midpoint thumbnails", () => {
+  const parsed = parseSavedRecipes(
+    JSON.stringify([
+      {
+        ...legacyRecipe,
+        id: "thumbnails",
+        name: "Thumbnails",
+        operation: "generateThumbnails",
+        settings: { kind: "generateThumbnails", mode: "contactSheet", outputFormat: "png" },
+      },
+    ]),
+  );
+  assert.deepEqual(parsed[0]?.settings, {
+    kind: "generateThumbnails",
+    mode: "frame",
+    outputFormat: "png",
+  });
 });
 
 test("rejects invalid settings rather than silently changing a recipe", () => {

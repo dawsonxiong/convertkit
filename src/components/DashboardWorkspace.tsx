@@ -53,6 +53,7 @@ export function DashboardWorkspace({
   const [finderStatuses, setFinderStatuses] = useState<FinderQuickActionStatus[]>([]);
   const [finderLoading, setFinderLoading] = useState(isTauriRuntime);
   const [finderBusy, setFinderBusy] = useState(false);
+  const [finderBusyId, setFinderBusyId] = useState<string | null>(null);
   const [recipeFinderStatuses, setRecipeFinderStatuses] = useState<
     Record<string, FinderQuickActionStatus>
   >({});
@@ -112,8 +113,28 @@ export function DashboardWorkspace({
   );
   const allFinderActionsInstalled = installedCount === BUILT_IN_FINDER_ACTIONS.length;
 
+  const toggleFinderAction = async (action: (typeof BUILT_IN_FINDER_ACTIONS)[number]) => {
+    if (disabled || finderBusy || finderBusyId || finderLoading || !isTauriRuntime()) return;
+    const index = BUILT_IN_FINDER_ACTIONS.findIndex((item) => item.id === action.id);
+    const installed = finderStatuses[index]?.installed;
+    setFinderBusyId(action.id);
+    try {
+      if (installed) {
+        await removeFinderQuickAction(action.id);
+      } else {
+        await installFinderQuickAction(action.id, action.label);
+      }
+      await refreshFinderStatuses();
+    } catch (error) {
+      console.error("Failed to update Finder Quick Action:", error);
+      onError("The Finder Quick Action could not be updated");
+    } finally {
+      setFinderBusyId(null);
+    }
+  };
+
   const updateFinderActions = async () => {
-    if (finderBusy || finderLoading || !isTauriRuntime()) return;
+    if (finderBusy || finderBusyId || finderLoading || !isTauriRuntime()) return;
     setFinderBusy(true);
     try {
       if (allFinderActionsInstalled) {
@@ -176,11 +197,11 @@ export function DashboardWorkspace({
                 <span className="dashboard-action-icon">
                   <OperationIcon operation={operation} />
                 </span>
-                <span className="min-w-0 text-left">
-                  <span className="block truncate text-[12px] font-medium text-[#e5e1e4]">
+                <span className="flex min-w-0 flex-col gap-1 text-left">
+                  <span className="truncate text-[12px]/none font-medium text-[#e5e1e4]">
                     {OPERATIONS[operation].label}
                   </span>
-                  <span className="mt-0.5 block text-[10px] text-white/35">
+                  <span className="text-[10px]/none text-white/35">
                     {operation === "compressPdf"
                       ? "PDF"
                       : operation === "createArchive"
@@ -208,49 +229,74 @@ export function DashboardWorkspace({
                 Finder actions
               </h2>
               <p className="mt-1 text-[10px] leading-4 text-white/40">
-                Run common tools from a file's Quick Actions menu.
+                Check the tools to add to a file's Quick Actions menu.
               </p>
             </div>
             {!finderLoading && isTauriRuntime() && (
-              <span className="text-[10px] text-white/35">
-                {installedCount}/{BUILT_IN_FINDER_ACTIONS.length}
-              </span>
+              <button
+                type="button"
+                disabled={disabled || finderBusy || finderBusyId !== null}
+                onClick={() => void updateFinderActions()}
+                className="text-button text-button-large"
+              >
+                {finderBusy
+                  ? "Updating…"
+                  : allFinderActionsInstalled
+                    ? "Disable all"
+                    : "Enable all"}
+              </button>
             )}
           </header>
 
-          <div className="my-3 divide-y divide-white/6 border-y border-white/8">
-            {BUILT_IN_FINDER_ACTIONS.map((action, index) => (
-              <div
-                key={action.id}
-                className="flex h-9 items-center gap-2 text-[11px] text-white/60"
-              >
-                <span className="size-3.5 text-white/35">
-                  <OperationIcon operation={action.operation} />
-                </span>
-                <span>{action.label}</span>
-                <span
-                  className={`ml-auto text-[9px] ${finderStatuses[index]?.installed ? "text-[#b0c6ff]" : "text-white/25"}`}
+          <div className="mt-3 divide-y divide-white/6 border-y border-white/8">
+            {BUILT_IN_FINDER_ACTIONS.map((action, index) => {
+              const installed = finderStatuses[index]?.installed ?? false;
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  disabled={
+                    disabled ||
+                    finderBusy ||
+                    finderBusyId === action.id ||
+                    finderLoading ||
+                    !isTauriRuntime()
+                  }
+                  onClick={() => void toggleFinderAction(action)}
+                  aria-pressed={installed}
+                  title={
+                    installed
+                      ? `${action.label} is in Finder. Click to remove.`
+                      : `Add ${action.label} to Finder.`
+                  }
+                  className="flex h-9 w-full items-center gap-2.5 text-left text-[11px] text-white/70 hover:bg-white/3 disabled:opacity-40"
                 >
-                  {finderStatuses[index]?.installed ? "Enabled" : "Off"}
-                </span>
-              </div>
-            ))}
+                  <span
+                    className={`grid size-4 shrink-0 place-items-center border ${
+                      installed
+                        ? "border-[#9bb6ff] bg-[#9bb6ff] text-[#0b1d43]"
+                        : "border-[#555761] text-transparent"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <svg
+                      className="size-2.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <path d="m5 12 4 4 10-10" />
+                    </svg>
+                  </span>
+                  <span className="size-3.5 text-white/35">
+                    <OperationIcon operation={action.operation} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                </button>
+              );
+            })}
           </div>
-
-          <button
-            type="button"
-            disabled={disabled || finderBusy || finderLoading || !isTauriRuntime()}
-            onClick={() => void updateFinderActions()}
-            className={`${allFinderActionsInstalled ? "secondary-button" : "primary-button"} w-full`}
-          >
-            {finderBusy
-              ? "Updating…"
-              : finderLoading
-                ? "Checking…"
-                : allFinderActionsInstalled
-                  ? "Remove from Finder"
-                  : "Enable in Finder"}
-          </button>
         </section>
       </div>
 

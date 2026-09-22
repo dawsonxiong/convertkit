@@ -96,7 +96,6 @@ export function FilePreview({
   const subtitleOutputFormat = useAppStore((s) => s.subtitleOutputFormat);
   const transcriptionOutputFormat = useAppStore((s) => s.transcriptionOutputFormat);
   const ocrOutputFormat = useAppStore((s) => s.ocrOutputFormat);
-  const thumbnailMode = useAppStore((s) => s.thumbnailMode);
   const thumbnailOutputFormat = useAppStore((s) => s.thumbnailOutputFormat);
   const imageExportPresets = useAppStore((s) => s.imageExportPresets);
   const audioTracks = useAppStore((s) => s.audioTracks[file.path]);
@@ -291,8 +290,7 @@ export function FilePreview({
             operation === "generateThumbnails" &&
             outputSize !== undefined ? (
             <span className="whitespace-nowrap text-emerald-300/65">
-              {thumbnailMode === "contactSheet" ? "Contact sheet" : "Thumbnail"} generated,{" "}
-              {formatFileSize(outputSize)}
+              Thumbnail generated, {formatFileSize(outputSize)}
             </span>
           ) : status === "completed" &&
             operation === "removeMetadata" &&

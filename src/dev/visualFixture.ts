@@ -354,7 +354,6 @@ export function applyVisualFixture(value: string): boolean {
     store.setSubtitleOutputFormat("vtt");
   }
   if (operation === "generateThumbnails") {
-    store.setThumbnailMode("contactSheet");
     store.setThumbnailOutputFormat("png");
   }
   if (operation === "splitPdf") {

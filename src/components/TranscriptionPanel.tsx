@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { formatFileSize } from "../lib/fileUtils";
 import { handleRadioGroupKeyDown } from "../lib/radioGroup";
 import { TRANSCRIPTION_LANGUAGES, TRANSCRIPTION_MODELS } from "../lib/transcription";
 import { useAppStore } from "../store/useAppStore";
@@ -120,39 +119,25 @@ export function TranscriptionPanel() {
             </button>
           )}
         </div>
-
-        <span className="text-[11px] font-medium text-white/45">Status</span>
-        <div className="min-w-0">
-          {downloading ? (
-            <div>
-              <div className="flex items-center justify-between gap-3 text-[10px] text-white/45">
-                <span>Downloading locally</span>
-                <span className="tabular-nums">{downloadPercent}%</span>
-              </div>
-              <div
-                role="progressbar"
-                aria-label={`Downloading ${selected?.label ?? model} transcription model`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={downloadPercent}
-                aria-valuetext={`${downloadPercent}% downloaded`}
-                className="mt-1.5 h-1 bg-white/[0.07]"
-              >
-                <div className="h-full bg-[#b0c6ff]" style={{ width: `${downloadPercent}%` }} />
-              </div>
+        {downloading && (
+          <div className="col-start-2 min-w-0">
+            <div className="flex items-center justify-between gap-3 text-[10px] text-white/45">
+              <span>Downloading locally</span>
+              <span className="tabular-nums">{downloadPercent}%</span>
             </div>
-          ) : (
-            <p className="truncate text-[10px] text-white/40">
-              {loading
-                ? "Checking model…"
-                : selected?.downloaded
-                  ? `Downloaded · ${formatFileSize(selected.localSize)}`
-                  : selected
-                    ? `${formatFileSize(selected.expectedSize)} download`
-                    : "Model status unavailable"}
-            </p>
-          )}
-        </div>
+            <div
+              role="progressbar"
+              aria-label={`Downloading ${selected?.label ?? model} transcription model`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={downloadPercent}
+              aria-valuetext={`${downloadPercent}% downloaded`}
+              className="mt-1.5 h-1 bg-white/[0.07]"
+            >
+              <div className="h-full bg-[#b0c6ff]" style={{ width: `${downloadPercent}%` }} />
+            </div>
+          </div>
+        )}
 
         <label htmlFor="transcription-language" className="text-[11px] font-medium text-white/45">
           Language

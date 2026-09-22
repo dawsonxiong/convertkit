@@ -1825,7 +1825,7 @@ mod tests {
         assert!(matches!(
             request,
             JobRequest::GenerateThumbnails {
-                mode: crate::commands::thumbnails::ThumbnailMode::ContactSheet,
+                mode: crate::commands::thumbnails::ThumbnailMode::Frame,
                 output_format: crate::commands::thumbnails::ThumbnailOutputFormat::Png,
                 ..
             }

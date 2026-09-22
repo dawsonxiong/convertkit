@@ -18,28 +18,15 @@ interface HistoryWorkspaceProps {
 
 export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
   const jobs = useRecentJobs((state) => state.jobs);
-  const recordingEnabled = useRecentJobs((state) => state.recordingEnabled);
-  const setRecordingEnabled = useRecentJobs((state) => state.setRecordingEnabled);
   const removeJob = useRecentJobs((state) => state.removeJob);
   const clear = useRecentJobs((state) => state.clear);
   const { reopen, load, undo } = useRecentJobActions(onOpen);
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-start justify-between gap-4">
-        <div>
+      <header className="shrink-0">
+        <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight text-[#e5e1e4]">Activity</h1>
-          <p className="mt-1 text-sm text-[#a8a8b1]">Load a previous job or reopen its sources.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setRecordingEnabled(!recordingEnabled)}
-            disabled={disabled}
-            className="text-button text-button-large"
-          >
-            {recordingEnabled ? "Pause history" : "Resume history"}
-          </button>
           {jobs.length > 0 && (
             <button
               type="button"
@@ -51,11 +38,12 @@ export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
             </button>
           )}
         </div>
+        <p className="mt-1 text-sm text-[#a8a8b1]">Load a previous job or reopen its sources.</p>
       </header>
 
       <div className="mt-5 min-h-0 flex-1">
         <div className="flex max-h-full flex-col border border-[#3b3d46] bg-[#131315]">
-          <header className="flex h-11 shrink-0 items-center border-b border-[#3b3d46] bg-[#1b1b1d] px-3">
+          <header className="flex h-11 shrink-0 items-center border-b border-[#3b3d46] bg-[#1b1b1d] px-4">
             <h2 className="text-[13px] font-semibold text-white/85">Recent jobs ({jobs.length})</h2>
           </header>
 
@@ -123,7 +111,7 @@ export function HistoryWorkspace({ disabled, onOpen }: HistoryWorkspaceProps) {
                       </span>
                     </button>
 
-                    <div className="mr-3 flex shrink-0 items-center gap-2">
+                    <div className="mr-4 flex shrink-0 items-center gap-1.5">
                       <OpenInFinderButton
                         paths={outputPaths}
                         disabled={disabled}

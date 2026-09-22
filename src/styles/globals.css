@@ -212,12 +212,30 @@ select {
 }
 
 .sidebar-section-title {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 4px;
   padding: 0 8px;
   color: rgb(255 255 255 / 40%);
   font-size: 11px;
   font-weight: 500;
   line-height: 16px;
+}
+
+.sidebar-section-title:hover:not(:disabled) {
+  color: rgb(255 255 255 / 65%);
+}
+
+.sidebar-section-chevron {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.sidebar-section-title[aria-expanded="false"] .sidebar-section-chevron {
+  transform: rotate(-90deg);
 }
 
 .sidebar-tool-button {
@@ -291,12 +309,16 @@ select {
   height: 12px;
 }
 
-.sidebar-pin-button:hover:not(:disabled) {
+.sidebar-pin-button:hover:not(:disabled):not([aria-pressed="true"]) {
   color: rgb(255 255 255 / 75%);
 }
 
 .sidebar-pin-button[aria-pressed="true"] {
   color: rgb(176 198 255 / 80%);
+}
+
+.sidebar-pin-button[aria-pressed="true"]:hover:not(:disabled) {
+  color: rgb(176 198 255 / 100%);
 }
 
 .sidebar-pin-button:disabled {
@@ -471,7 +493,7 @@ select {
   white-space: nowrap;
 }
 
-.segmented-button:hover:not(:disabled) {
+.segmented-button:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
   color: rgb(255 255 255 / 80%);
 }
 
@@ -481,11 +503,16 @@ select {
   color: #b0c6ff;
 }
 
+.segmented-button[aria-pressed="true"]:hover:not(:disabled),
+.segmented-button[aria-checked="true"]:hover:not(:disabled) {
+  color: #d9e2ff;
+}
+
 .choice-row {
   color: rgb(255 255 255 / 70%);
 }
 
-.choice-row:hover:not(:disabled) {
+.choice-row:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
   background: #18181b;
 }
 
@@ -493,6 +520,11 @@ select {
 .choice-row[aria-checked="true"] {
   background: #20283a;
   color: #b0c6ff;
+}
+
+.choice-row[aria-pressed="true"]:hover:not(:disabled),
+.choice-row[aria-checked="true"]:hover:not(:disabled) {
+  background: #263248;
 }
 
 .choice-button {
@@ -515,7 +547,7 @@ select {
   height: 44px;
 }
 
-.choice-button:hover:not(:disabled) {
+.choice-button:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
   border-color: #5b5d67;
   background: #18181b;
   color: #e5e1e4;
@@ -526,6 +558,12 @@ select {
   border-color: #9bb6ff;
   background: #20283a;
   color: #b0c6ff;
+}
+
+.choice-button[aria-pressed="true"]:hover:not(:disabled),
+.choice-button[aria-checked="true"]:hover:not(:disabled) {
+  border-color: #b0c6ff;
+  background: #263248;
 }
 
 .text-button {
