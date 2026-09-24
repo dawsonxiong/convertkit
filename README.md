@@ -1,8 +1,8 @@
 # ConvertKit
 
-A private, offline file workspace for macOS. Convert media and documents, resize and optimize images, transcribe locally, work with PDFs and archives, and inspect files — all in one dark desktop app. Nothing is uploaded.
+A private, offline file workspace for macOS. Convert media and documents, resize and optimize images, transcribe locally, work with PDFs and archives, and inspect files — all in one dark desktop app. Nothing is uploaded. Apple Silicon only.
 
-Built with Tauri v2, React, and Rust. Apple Silicon only.
+![ConvertKit's converter after a real run: an MP4 turned into a MOV, 72.5 MB to 9.1 MB, and a PNG turned into a JPEG, 2.1 MB to 247 KB](docs/screenshots/convert-live.webp)
 
 ## Tools
 
@@ -15,6 +15,18 @@ Built with Tauri v2, React, and Rust. Apple Silicon only.
 | Organize | Create archive, Extract archive, Batch rename, Inspect files |
 
 Sources are never overwritten. Pin tools in the sidebar, save recipes, and optionally install Finder Quick Actions from the dashboard.
+
+## Screenshots
+
+| Compressed video, 97% smaller | Extract text from a PDF | Dashboard and recent activity |
+| :-: | :-: | :-: |
+| <img src="docs/screenshots/compress-result.webp" alt="ConvertKit's compress-video result: the MP4 went from 72.5 MB to 2.4 MB, 97% smaller" width="260"> | <img src="docs/screenshots/extract-text.webp" alt="ConvertKit's extract-text tool after pulling 5.6 KB of text out of a math assignment PDF" width="260"> | <img src="docs/screenshots/dashboard.webp" alt="ConvertKit dashboard with popular tools, Finder quick actions and today's jobs in recent activity" width="260"> |
+
+## How it works
+
+- React builds a typed job and checks which engines are installed over Tauri IPC before anything runs.
+- Rust hands each job to FFmpeg, ImageMagick, Pandoc or whisper.cpp and streams progress back as events.
+- Container-only conversions skip re-encoding: ffprobe checks the codecs, then the file is remuxed instantly.
 
 ## Convert
 
@@ -31,7 +43,13 @@ The Convert picker is generated from `src/lib/formatMatrix.json`. Backend tests 
 
 Missing engines are reported before a job starts. PDF-to-DOCX is not offered.
 
-## Requirements
+## Stack
+
+Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whisper.cpp.
+
+## Running locally
+
+Requires macOS on Apple Silicon, Rust, Node 22 and pnpm, plus the engines:
 
 ```sh
 brew install ffmpeg imagemagick whisper-cpp pandoc resvg tectonic poppler ghostscript
@@ -41,8 +59,6 @@ cargo install vtracer
 ```
 
 The packaged app bundles a pinned Whisper runtime. Tiny, Base, and Small models download on demand and stay on the Mac.
-
-## Development
 
 ```sh
 pnpm install
