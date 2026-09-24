@@ -544,7 +544,7 @@ export function serializeSavedRecipes(recipes: SavedRecipe[]): string {
 
 export function savedRecipeDestinationLabel(recipe: SavedRecipe): string {
   const folder = recipe.directory
-    ? (recipe.directory.split(/[\\/]/).filter(Boolean).at(-1) ?? recipe.directory)
+    ? (recipe.directory.split(/[\\/]/).filter(Boolean).pop() ?? recipe.directory)
     : "Source folder";
   const suffix = recipe.suffix.trim();
   return suffix ? `${folder} · ${suffix}` : folder;

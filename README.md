@@ -1,6 +1,6 @@
 # ConvertKit
 
-A private, offline file workspace for macOS. Convert media and documents, resize and optimize images, transcribe locally, work with PDFs and archives, and inspect files — all in one dark desktop app. Nothing is uploaded. Apple Silicon only.
+A Rust macOS app with 22 file tools, from video compression and Whisper transcription to PDF splitting. It all runs offline on your Mac. Apple Silicon only.
 
 ![ConvertKit's converter after a real run: an MP4 turned into a MOV, 72.5 MB to 9.1 MB, and a PNG turned into a JPEG, 2.1 MB to 247 KB](docs/screenshots/convert-live.webp)
 
@@ -14,7 +14,7 @@ A private, offline file workspace for macOS. Convert media and documents, resize
 | PDF & documents | Extract text, Recognize text, Combine to PDF, Split PDF, Export PDF pages, Compress PDF |
 | Organize | Create archive, Extract archive, Batch rename, Inspect files |
 
-Sources are never overwritten. Pin tools in the sidebar, save recipes, and optionally install Finder Quick Actions from the dashboard.
+Results are saved as new files, so your originals stay as they were. You can pin tools to the sidebar, save recipes, and add Finder Quick Actions from the dashboard.
 
 ## Screenshots
 
@@ -24,13 +24,13 @@ Sources are never overwritten. Pin tools in the sidebar, save recipes, and optio
 
 ## How it works
 
-- React builds a typed job and checks which engines are installed over Tauri IPC before anything runs.
-- Rust hands each job to FFmpeg, ImageMagick, Pandoc or whisper.cpp and streams progress back as events.
-- Container-only conversions skip re-encoding: ffprobe checks the codecs, then the file is remuxed instantly.
+The React side builds a job and asks Rust over Tauri IPC whether the engines it needs are installed. Rust then runs it through FFmpeg, ImageMagick, Pandoc or whisper.cpp and streams progress back as events.
+
+If a conversion only changes the container, like MP4 to MOV with the same codecs, ffprobe spots that and the file gets remuxed instead of re-encoded, which is pretty much instant.
 
 ## Convert
 
-The Convert picker is generated from `src/lib/formatMatrix.json`. Backend tests require a real engine route for every GUI option.
+The formats in Convert come from `src/lib/formatMatrix.json`, and a backend test checks that every option has an engine behind it.
 
 | Kind | Inputs | Outputs | Engine |
 | --- | --- | --- | --- |
@@ -41,7 +41,7 @@ The Convert picker is generated from `src/lib/formatMatrix.json`. Backend tests 
 | Documents | DOCX, HTML, Markdown, EPUB, TXT | Other documents, including PDF | Pandoc, LibreOffice, Tectonic |
 | PDF | PDF | Use the PDF tools, not Convert | Poppler, Ghostscript |
 
-Missing engines are reported before a job starts. PDF-to-DOCX is not offered.
+If an engine is missing, you find out before the job starts. There's no PDF to DOCX.
 
 ## Stack
 
@@ -49,7 +49,7 @@ Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whi
 
 ## Running locally
 
-Requires macOS on Apple Silicon, Rust, Node 22 and pnpm, plus the engines:
+You'll need an Apple Silicon Mac, Rust, Node 22 and pnpm, plus these engines:
 
 ```sh
 brew install ffmpeg imagemagick whisper-cpp pandoc resvg tectonic poppler ghostscript
@@ -58,7 +58,7 @@ brew install --cask libreoffice
 cargo install vtracer
 ```
 
-The packaged app bundles a pinned Whisper runtime. Tiny, Base, and Small models download on demand and stay on the Mac.
+The packaged app comes with its own Whisper runtime. The Tiny, Base and Small models download the first time you use them.
 
 ```sh
 pnpm install
@@ -78,7 +78,7 @@ pnpm tauri dev
 | `pnpm release:doctor` | Check signing/notarize tooling |
 | `pnpm release:macos` | Sign, notarize, and staple the DMG |
 
-Loaded-state visual fixtures work in Vite only:
+To open the app with a test fixture already loaded (Vite only):
 
 ```sh
 pnpm tauri dev --no-watch --config \
@@ -89,7 +89,7 @@ pnpm tauri dev --no-watch --config \
 
 Output: `src-tauri/target/release/bundle/dmg/ConvertKit_<version>_<arch>.dmg`
 
-Credentials come from 1Password. Export secret references, never plaintext keys:
+Signing credentials come from 1Password. Export the `op://` references rather than the keys themselves:
 
 ```sh
 export CONVERTKIT_SIGNING_IDENTITY_REF='op://VAULT/ITEM/signing identity'
@@ -112,7 +112,7 @@ Then `pnpm release:doctor`, `pnpm release:check`, and `pnpm release:macos`.
 | `←/→/↑/↓` | Change a focused selector |
 | `Home/End` | First or last selector option |
 
-Enter and Escape do not run or clear work while a form control has focus.
+Enter and Esc don't do anything while a form field or selector is focused.
 
 ## License
 
