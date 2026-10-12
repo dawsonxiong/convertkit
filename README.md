@@ -2,6 +2,8 @@
 
 A Rust macOS app with 22 file tools, from video compression and Whisper transcription to PDF splitting. It all runs offline on your Mac. Apple Silicon only.
 
+[Download the latest release](https://github.com/dawsonxiong/ConvertKit/releases/latest/download/ConvertKit_aarch64.dmg). On first launch, choose Open Anyway in System Settings > Privacy & Security.
+
 ![ConvertKit's converter after a real run: an MP4 turned into a MOV, 72.5 MB to 9.1 MB, and a PNG turned into a JPEG, 2.1 MB to 247 KB](docs/screenshots/convert-live.webp)
 
 ## Tools
