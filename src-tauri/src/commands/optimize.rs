@@ -6,9 +6,11 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::engines::codecs;
+use crate::engines::imageio::{self, ImageOptions};
 use crate::engines::process::{run_process, ProcessMessages};
 use crate::engines::verification::{
-    inspect_image_structure, magick_format_matches, ImageStructure,
+    inspect_image_structure, inspect_with_magick, magick_format_matches, ImageStructure,
 };
 #[cfg(test)]
 use crate::engines::verification::{parse_image_structure, ImageFrameStructure};
@@ -79,11 +81,9 @@ pub(super) async fn optimize_image(
     let target_size =
         validate_image_optimization_settings(&input, format, compression_goal, target_size_bytes)?;
 
-    if engines::resolve_tool("magick").is_none() {
-        return Err(ConversionError::MissingDependency {
-            tool: "magick".into(),
-            install_hint: "Install ImageMagick to optimize images".into(),
-        });
+    if engines::resolve_tool(imageio::HELPER).is_none() && engines::resolve_tool("magick").is_none()
+    {
+        return Err(imageio::missing_helper());
     }
 
     let extension = format.extension();
@@ -209,6 +209,40 @@ pub(super) fn validate_image_optimization_settings(
     Ok(Some(target))
 }
 
+/// Whether the bundled helper optimizes this source. ImageMagick is only a
+/// fallback for formats this Mac cannot encode, such as AVIF on older macOS.
+fn optimizes_with_helper(format: Format, frames: usize) -> bool {
+    imageio::handles(format, format, frames)
+}
+
+/// Source structure as seen by the renderer that will verify its candidates.
+async fn inspect_source(
+    input: &Path,
+    expected_format: Format,
+    cancel_token: CancellationToken,
+) -> Result<(ImageStructure, bool), ConversionError> {
+    let structure = inspect_image_structure(input, cancel_token.clone()).await?;
+    if !magick_format_matches(expected_format, &structure.magick_format) {
+        return Err(optimization_verification_error(
+            "The source contents do not match the image format in its filename",
+            &structure.magick_format,
+        ));
+    }
+    if optimizes_with_helper(expected_format, structure.frames.len()) {
+        return Ok((structure, true));
+    }
+    if engines::resolve_tool("magick").is_none() {
+        return Err(ConversionError::MissingDependency {
+            tool: "magick".into(),
+            install_hint: format!(
+                "Install ImageMagick to optimize this {}",
+                expected_format.label()
+            ),
+        });
+    }
+    Ok((inspect_with_magick(input, cancel_token).await?, false))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_target_optimization(
     app: Option<&AppHandle>,
@@ -220,13 +254,8 @@ async fn run_target_optimization(
     target_size: u64,
     cancel_token: CancellationToken,
 ) -> Result<OptimizationOutcome, ConversionError> {
-    let source_structure = inspect_image_structure(input, cancel_token.clone()).await?;
-    if !magick_format_matches(expected_format, &source_structure.magick_format) {
-        return Err(optimization_verification_error(
-            "The source contents do not match the image format in its filename",
-            &source_structure.magick_format,
-        ));
-    }
+    let (source_structure, with_helper) =
+        inspect_source(input, expected_format, cancel_token.clone()).await?;
 
     let temp = tempfile::Builder::new()
         .prefix("convertkit-image-size-")
@@ -267,6 +296,7 @@ async fn run_target_optimization(
             expected_format,
             quality,
             keep_metadata,
+            with_helper,
             cancel_token.clone(),
         )
         .await
@@ -276,6 +306,7 @@ async fn run_target_optimization(
                     &candidate,
                     &source_structure,
                     expected_format,
+                    with_helper,
                     cancel_token.clone(),
                 )
                 .await
@@ -356,14 +387,29 @@ fn target_candidate_arguments(format: Format, quality: u8) -> Vec<OsString> {
     arguments
 }
 
+fn target_candidate_options(format: Format, quality: u8, keep_metadata: bool) -> ImageOptions {
+    ImageOptions {
+        quality: Some(quality),
+        strip: !keep_metadata,
+        webp_method: (format == Format::WebP).then_some(6),
+        ..ImageOptions::default()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_target_candidate(
     input: &Path,
     output: &Path,
     format: Format,
     quality: u8,
     keep_metadata: bool,
+    with_helper: bool,
     cancel_token: CancellationToken,
 ) -> Result<(), ConversionError> {
+    if with_helper {
+        let options = target_candidate_options(format, quality, keep_metadata);
+        return imageio::convert(input, output, format, &options, cancel_token).await;
+    }
     let mut command = tool_command("magick");
     command.arg(input);
     if !keep_metadata {
@@ -388,13 +434,8 @@ async fn run_optimization(
         .unwrap_or("png")
         .to_ascii_lowercase();
     let source_size = verified_regular_file_size(input)?;
-    let source_structure = inspect_image_structure(input, cancel_token.clone()).await?;
-    if !magick_format_matches(expected_format, &source_structure.magick_format) {
-        return Err(optimization_verification_error(
-            "The source contents do not match the image format in its filename",
-            &source_structure.magick_format,
-        ));
-    }
+    let (source_structure, with_helper) =
+        inspect_source(input, expected_format, cancel_token.clone()).await?;
 
     let temp = tempfile::tempdir().map_err(|error| ConversionError::ProcessFailed {
         message: format!("Could not create optimization workspace: {error}"),
@@ -402,27 +443,44 @@ async fn run_optimization(
         exit_code: None,
     })?;
 
-    let strategies = optimization_strategies(&extension);
     // The source is the baseline candidate. Only a verified, strictly smaller
     // derivative is allowed to displace it.
     let mut best: Option<VerifiedCandidate> = None;
+    let strategy_count = if with_helper {
+        helper_strategies(expected_format, keep_metadata).len()
+    } else {
+        optimization_strategies(&extension).len()
+    };
 
-    for (index, arguments) in strategies.iter().enumerate() {
+    for index in 0..strategy_count {
         let candidate = temp.path().join(format!("candidate-{index}.{extension}"));
-        match run_candidate(
-            input,
-            &candidate,
-            arguments,
-            keep_metadata,
-            cancel_token.clone(),
-        )
-        .await
-        {
+        let rendered = if with_helper {
+            let options = &helper_strategies(expected_format, keep_metadata)[index];
+            imageio::convert(
+                input,
+                &candidate,
+                expected_format,
+                options,
+                cancel_token.clone(),
+            )
+            .await
+        } else {
+            run_candidate(
+                input,
+                &candidate,
+                &optimization_strategies(&extension)[index],
+                keep_metadata,
+                cancel_token.clone(),
+            )
+            .await
+        };
+        match rendered {
             Ok(()) => {
                 match verify_candidate(
                     &candidate,
                     &source_structure,
                     expected_format,
+                    with_helper,
                     cancel_token.clone(),
                 )
                 .await
@@ -454,6 +512,7 @@ async fn run_optimization(
                 &specialized,
                 &source_structure,
                 expected_format,
+                with_helper,
                 cancel_token,
             )
             .await
@@ -499,10 +558,15 @@ async fn verify_candidate(
     path: &Path,
     source_structure: &ImageStructure,
     expected_format: Format,
+    with_helper: bool,
     cancel_token: CancellationToken,
 ) -> Result<VerifiedCandidate, ConversionError> {
     let size = verified_regular_file_size(path)?;
-    let structure = inspect_image_structure(path, cancel_token).await?;
+    let structure = if with_helper {
+        inspect_image_structure(path, cancel_token).await?
+    } else {
+        inspect_with_magick(path, cancel_token).await?
+    };
     if !candidate_matches_source(source_structure, &structure, expected_format) {
         return Err(optimization_verification_error(
             "An optimization candidate changed the image format, dimensions, or frame count",
@@ -549,6 +613,9 @@ fn optimization_verification_error(message: &str, stderr: &str) -> ConversionErr
     }
 }
 
+/// Lossless, format-specific passes that run in process: oxipng for PNG, a
+/// coefficient transcode for JPEG (what jpegoptim does) and frame
+/// differencing for animated GIF (what gifsicle does).
 async fn run_specialized_candidate(
     input: &Path,
     output: &Path,
@@ -556,39 +623,63 @@ async fn run_specialized_candidate(
     keep_metadata: bool,
     cancel_token: CancellationToken,
 ) -> Result<bool, ConversionError> {
-    let (tool, mut arguments): (&str, Vec<&str>) = match extension {
-        "png" if engines::resolve_tool("oxipng").is_some() => {
-            ("oxipng", vec!["-o", "4", "--quiet"])
+    let read_source = || {
+        std::fs::read(input).map_err(|error| ConversionError::ProcessFailed {
+            message: format!("Could not read the image for optimization: {error}"),
+            stderr: String::new(),
+            exit_code: None,
+        })
+    };
+    let optimized = match extension {
+        "png" => {
+            std::fs::copy(input, output).map_err(|error| ConversionError::ProcessFailed {
+                message: format!("Could not prepare PNG recompression: {error}"),
+                stderr: String::new(),
+                exit_code: None,
+            })?;
+            imageio::optimize_png(output, !keep_metadata).await?;
+            None
         }
-        "jpg" | "jpeg" if engines::resolve_tool("jpegoptim").is_some() => {
-            ("jpegoptim", vec!["--quiet", "--auto-mode"])
+        "jpg" | "jpeg" => {
+            let source = read_source()?;
+            Some(
+                tokio::task::spawn_blocking(move || {
+                    codecs::optimize_jpeg_lossless(&source, keep_metadata).ok()
+                })
+                .await
+                .ok()
+                .flatten(),
+            )
         }
-        "gif" if engines::resolve_tool("gifsicle").is_some() => {
-            let mut command = tool_command("gifsicle");
-            command.args(["-O3", "--output"]).arg(output).arg(input);
-            run_optimizer_process(command, output, cancel_token).await?;
-            return Ok(true);
+        // Frame differencing drops GIF comments and application extensions,
+        // so it only runs when metadata may go.
+        "gif" if !keep_metadata => {
+            let source = read_source()?;
+            Some(
+                tokio::task::spawn_blocking(move || codecs::optimize_gif(&source))
+                    .await
+                    .ok()
+                    .flatten(),
+            )
         }
         _ => return Ok(false),
     };
-
-    std::fs::copy(input, output).map_err(|error| ConversionError::ProcessFailed {
-        message: format!("Could not prepare specialized optimization: {error}"),
-        stderr: String::new(),
-        exit_code: None,
-    })?;
-
-    match tool {
-        "oxipng" if !keep_metadata => arguments.extend(["--strip", "safe"]),
-        "jpegoptim" if keep_metadata => arguments.push("--keep-all"),
-        "jpegoptim" => arguments.push("--strip-all"),
-        _ => {}
+    if cancel_token.is_cancelled() {
+        engines::cleanup_partial(output);
+        return Err(ConversionError::Cancelled);
     }
-
-    let mut command = tool_command(tool);
-    command.args(arguments).arg(output);
-    run_optimizer_process(command, output, cancel_token).await?;
-    Ok(true)
+    match optimized {
+        None => Ok(true),
+        Some(None) => Ok(false),
+        Some(Some(bytes)) => {
+            std::fs::write(output, bytes).map_err(|error| ConversionError::ProcessFailed {
+                message: format!("Could not save the optimized image: {error}"),
+                stderr: String::new(),
+                exit_code: None,
+            })?;
+            Ok(true)
+        }
+    }
 }
 
 async fn run_candidate(
@@ -624,6 +715,36 @@ async fn run_optimizer_process(
         },
     )
     .await
+}
+
+/// Helper equivalents of [`optimization_strategies`]. PNG relies on the
+/// in-process oxipng candidate for most of its savings.
+fn helper_strategies(format: Format, keep_metadata: bool) -> Vec<ImageOptions> {
+    let base = ImageOptions {
+        strip: !keep_metadata,
+        ..ImageOptions::default()
+    };
+    let with = |change: fn(&mut ImageOptions)| {
+        let mut options = base.clone();
+        change(&mut options);
+        options
+    };
+    match format {
+        Format::Jpg => vec![with(|options| options.quality = Some(92))],
+        Format::WebP => vec![
+            with(|options| {
+                options.quality = Some(90);
+                options.webp_method = Some(4);
+            }),
+            with(|options| {
+                options.quality = Some(90);
+                options.webp_method = Some(6);
+            }),
+        ],
+        Format::Tiff => vec![with(|options| options.lzw = true)],
+        Format::Avif | Format::Heic => vec![with(|options| options.quality = Some(90))],
+        _ => vec![base],
+    }
 }
 
 fn optimization_strategies(extension: &str) -> Vec<Vec<&'static str>> {
@@ -935,19 +1056,34 @@ mod tests {
 
     #[tokio::test]
     async fn preserves_the_source_when_reencoding_cannot_make_it_smaller() {
-        if engines::resolve_tool("magick").is_none() {
-            return;
-        }
         let directory = tempfile::tempdir().expect("tempdir");
         let source = directory.path().join("source.bmp");
         let output = directory.path().join("optimized.bmp");
-        let status = tool_command("magick")
-            .args(["-size", "8x6", "xc:#345678"])
-            .arg(&source)
-            .status()
+        // The fixture comes from the renderer that will re-encode it, so a
+        // second pass has nothing left to save.
+        if imageio::handles(Format::Bmp, Format::Bmp, 1) {
+            let png = directory.path().join("source.png");
+            imageio::fixtures::png(&png, 8, 6, [0x34, 0x56, 0x78, 0xff]);
+            imageio::convert(
+                &png,
+                &source,
+                Format::Bmp,
+                &ImageOptions::default(),
+                CancellationToken::new(),
+            )
             .await
             .expect("create BMP fixture");
-        assert!(status.success());
+        } else if engines::resolve_tool("magick").is_some() {
+            let status = tool_command("magick")
+                .args(["-size", "8x6", "xc:#345678"])
+                .arg(&source)
+                .status()
+                .await
+                .expect("create BMP fixture");
+            assert!(status.success());
+        } else {
+            return;
+        }
         let source_bytes = std::fs::read(&source).expect("source bytes");
 
         let outcome = run_optimization(

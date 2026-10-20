@@ -1,6 +1,10 @@
+pub mod codecs;
 pub mod ffmpeg;
 pub mod image_pdf;
+pub mod imageio;
 pub mod imagemagick;
+pub mod pdf_compress;
+pub mod pdf_pages;
 pub mod libreoffice;
 pub mod pandoc;
 pub mod process;
@@ -21,6 +25,24 @@ use crate::formats::Format;
 /// Resolve CLI tools for both terminal-launched development builds and Finder
 /// or Spotlight-launched app bundles, whose inherited PATH is minimal.
 pub fn resolve_tool(name: &str) -> Option<PathBuf> {
+    if pdf_helper_command(name) {
+        if let Some(helper) = resolve_executable(PDF_HELPER) {
+            return Some(helper);
+        }
+    }
+    resolve_executable(name)
+}
+
+/// The bundled PDF helper answers these Poppler commands with the same
+/// arguments and output, so Poppler is only a fallback when the helper is
+/// missing from a development checkout.
+const PDF_HELPER: &str = "convertkit-pdf";
+
+fn pdf_helper_command(name: &str) -> bool {
+    matches!(name, "pdfinfo" | "pdftoppm" | "pdftotext")
+}
+
+fn resolve_executable(name: &str) -> Option<PathBuf> {
     let inherited = std::env::var_os("PATH").unwrap_or_default();
     let resolved = tool_search_directories(Some(inherited), std::env::current_exe().ok())
         .into_iter()
@@ -29,11 +51,29 @@ pub fn resolve_tool(name: &str) -> Option<PathBuf> {
     resolved.or_else(|| development_sidecar(name))
 }
 
-fn development_sidecar(name: &str) -> Option<PathBuf> {
-    if !matches!(
+/// Executables that ship inside the app bundle, including the Poppler
+/// commands the bundled PDF helper answers.
+pub fn is_bundled_tool(name: &str) -> bool {
+    pdf_helper_command(name) || is_bundled_executable(name)
+}
+
+fn is_bundled_executable(name: &str) -> bool {
+    matches!(
         name,
-        "convertkit-image-pdf" | "convertkit-vision-ocr" | "whisper-cli"
-    ) {
+        "convertkit-image-pdf"
+            | "convertkit-imageio"
+            | "convertkit-pdf"
+            | "convertkit-vision-ocr"
+            | "ffmpeg"
+            | "ffprobe"
+            | "pandoc"
+            | "tectonic"
+            | "whisper-cli"
+    )
+}
+
+fn development_sidecar(name: &str) -> Option<PathBuf> {
+    if !is_bundled_executable(name) {
         return None;
     }
     let target = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
@@ -79,6 +119,9 @@ fn tool_search_directories(
 pub fn tool_command(name: &str) -> tokio::process::Command {
     let executable = resolve_tool(name).unwrap_or_else(|| PathBuf::from(name));
     let mut command = tokio::process::Command::new(&executable);
+    if pdf_helper_command(name) && executable.file_name() != Some(std::ffi::OsStr::new(name)) {
+        command.arg(name);
+    }
     if name == "whisper-cli" {
         if let Some(backends) = bundled_whisper_backends(&executable) {
             command.current_dir(backends);
@@ -159,6 +202,7 @@ pub enum EngineKind {
     VTracer(vtracer::VTracerEngine),
     LibreOffice(libreoffice::LibreOfficeEngine),
     ImagePdf(image_pdf::ImagePdfEngine),
+    ImageIo(imageio::ImageIoEngine),
     ImageMagick(imagemagick::ImageMagickEngine),
     Ffmpeg(ffmpeg::FfmpegEngine),
     Pandoc(pandoc::PandocEngine),
@@ -171,6 +215,7 @@ impl EngineKind {
             Self::VTracer(e) => e.supports(input, output),
             Self::LibreOffice(e) => e.supports(input, output),
             Self::ImagePdf(e) => e.supports(input, output),
+            Self::ImageIo(e) => e.supports(input, output),
             Self::ImageMagick(e) => e.supports(input, output),
             Self::Ffmpeg(e) => e.supports(input, output),
             Self::Pandoc(e) => e.supports(input, output),
@@ -183,6 +228,7 @@ impl EngineKind {
             Self::VTracer(e) => e.required_tool(),
             Self::LibreOffice(e) => e.required_tool(),
             Self::ImagePdf(e) => e.required_tool(),
+            Self::ImageIo(e) => e.required_tool(),
             Self::ImageMagick(e) => e.required_tool(),
             Self::Ffmpeg(e) => e.required_tool(),
             Self::Pandoc(e) => e.required_tool(),
@@ -190,18 +236,28 @@ impl EngineKind {
     }
 
     /// Every executable required for this exact conversion. Most engines need
-    /// one binary; Pandoc PDF output also needs a LaTeX engine.
+    /// one binary, in-process engines none, and Pandoc PDF output also needs
+    /// a LaTeX engine.
     pub fn required_tools(&self, output: Format) -> Vec<&'static str> {
         match self {
+            // resvg and vtracer are linked into the app; vtracer reads its
+            // input through the bundled ImageIO helper.
+            Self::Resvg(_) => Vec::new(),
+            Self::VTracer(_) => vec![imageio::HELPER],
             Self::Pandoc(_) if output == Format::Pdf => vec!["pandoc", "tectonic"],
             _ => vec![self.required_tool()],
         }
     }
 
-    pub fn is_available_for(&self, output: Format) -> bool {
-        self.required_tools(output)
+    pub fn is_available_for(&self, input: Format, output: Format) -> bool {
+        let installed = self
+            .required_tools(output)
             .into_iter()
-            .all(|tool| resolve_tool(tool).is_some())
+            .all(|tool| resolve_tool(tool).is_some());
+        match self {
+            Self::ImageIo(e) => installed && e.is_available_for(input, output),
+            _ => installed,
+        }
     }
 
     pub async fn convert(
@@ -215,6 +271,7 @@ impl EngineKind {
             Self::VTracer(e) => e.convert(request, app, cancel_token).await,
             Self::LibreOffice(e) => e.convert(request, app, cancel_token).await,
             Self::ImagePdf(e) => e.convert(request, app, cancel_token).await,
+            Self::ImageIo(e) => e.convert(request, app, cancel_token).await,
             Self::ImageMagick(e) => e.convert(request, app, cancel_token).await,
             Self::Ffmpeg(e) => e.convert(request, app, cancel_token).await,
             Self::Pandoc(e) => e.convert(request, app, cancel_token).await,
@@ -234,6 +291,7 @@ pub fn get_engines(input: Format, output: Format) -> Vec<EngineKind> {
         EngineKind::VTracer(vtracer::VTracerEngine),
         EngineKind::LibreOffice(libreoffice::LibreOfficeEngine),
         EngineKind::ImagePdf(image_pdf::ImagePdfEngine),
+        EngineKind::ImageIo(imageio::ImageIoEngine),
         EngineKind::ImageMagick(imagemagick::ImageMagickEngine),
         EngineKind::Ffmpeg(ffmpeg::FfmpegEngine),
         EngineKind::Pandoc(pandoc::PandocEngine),
@@ -251,7 +309,7 @@ pub fn get_engines(input: Format, output: Format) -> Vec<EngineKind> {
 pub fn get_engine(input: Format, output: Format) -> Option<EngineKind> {
     get_engines(input, output)
         .into_iter()
-        .find(|engine| engine.is_available_for(output))
+        .find(|engine| engine.is_available_for(input, output))
 }
 
 /// Missing tool groups for each compatible engine. Each inner vector is an
@@ -334,6 +392,24 @@ mod tests {
     }
 
     #[test]
+    fn raster_pairs_prefer_the_bundled_imageio_helper() {
+        let tools = get_engines(Format::Png, Format::WebP)
+            .into_iter()
+            .map(|engine| engine.required_tool())
+            .collect::<Vec<_>>();
+        assert_eq!(tools, vec!["convertkit-imageio", "magick"]);
+    }
+
+    #[test]
+    fn svg_rasters_need_no_installed_tool() {
+        for output in [Format::Png, Format::Jpg, Format::WebP, Format::Ico] {
+            let engines = get_engines(Format::Svg, output);
+            assert!(engines[0].required_tools(output).is_empty());
+            assert!(engines[0].is_available_for(Format::Svg, output));
+        }
+    }
+
+    #[test]
     fn png_and_jpeg_pdf_use_only_the_bundled_single_page_route() {
         for input in [Format::Png, Format::Jpg] {
             let tools = get_engines(input, Format::Pdf)
@@ -344,6 +420,15 @@ mod tests {
         }
         assert!(get_engines(Format::Gif, Format::Pdf).is_empty());
         assert!(get_engines(Format::Svg, Format::Pdf).is_empty());
+    }
+
+    #[test]
+    fn docx_pdf_prefers_libreoffice_then_falls_back_to_pandoc() {
+        let tools = get_engines(Format::Docx, Format::Pdf)
+            .into_iter()
+            .map(|engine| engine.required_tool())
+            .collect::<Vec<_>>();
+        assert_eq!(tools, vec!["soffice", "pandoc"]);
     }
 
     #[test]

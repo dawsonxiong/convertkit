@@ -56,7 +56,9 @@ UNREACHABLE_SOURCE="$SOURCE_DIRECTORY/unreachable noise.jpg"
   -quality 100 "$JPEG_SOURCE"
 "$MAGICK" -seed 424242 -size 1200x800 'xc:#7580aa' +noise Random \
   -define webp:method=6 -quality 100 "$WEBP_SOURCE"
-"$MAGICK" -seed 8675309 -size 2400x1600 'xc:#7580aa' +noise Random \
+# Large enough that mozjpeg's quality-1 output (about 25 KB) stays above the
+# 16 KiB target.
+"$MAGICK" -seed 8675309 -size 3600x2400 'xc:#7580aa' +noise Random \
   -quality 100 "$UNREACHABLE_SOURCE"
 
 for source_path in "$JPEG_SOURCE" "$WEBP_SOURCE" "$UNREACHABLE_SOURCE"; do
@@ -81,7 +83,7 @@ image_topology() {
   fail "the JPEG fixture has unexpected format, dimensions, or frame count"
 [ "$(image_topology "$WEBP_SOURCE")" = 'WEBP 1200 800' ] ||
   fail "the WebP fixture has unexpected format, dimensions, or frame count"
-[ "$(image_topology "$UNREACHABLE_SOURCE")" = 'JPEG 2400 1600' ] ||
+[ "$(image_topology "$UNREACHABLE_SOURCE")" = 'JPEG 3600 2400' ] ||
   fail "the unreachable fixture has unexpected format, dimensions, or frame count"
 
 assert_sources_unchanged() {

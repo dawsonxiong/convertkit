@@ -6,10 +6,11 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::engines::imageio::{self, ImageOptions, Resize};
 use crate::engines::process::{run_process, ProcessMessages};
-use crate::engines::{self, tool_command, ConversionResult};
+use crate::engines::{self, tool_command, verification, ConversionResult};
 use crate::error::ConversionError;
-use crate::formats::FileCategory;
+use crate::formats::{FileCategory, Format};
 use crate::progress::ProgressPayload;
 
 use super::output::{prepare_output, OutputOptions, PreparedOutput};
@@ -129,11 +130,9 @@ pub(super) async fn export_image_variants(
             output: "image export".into(),
         });
     }
-    if engines::resolve_tool("magick").is_none() {
-        return Err(ConversionError::MissingDependency {
-            tool: "magick".into(),
-            install_hint: "Install ImageMagick to export image variants".into(),
-        });
+    if engines::resolve_tool(imageio::HELPER).is_none() && engines::resolve_tool("magick").is_none()
+    {
+        return Err(imageio::missing_helper());
     }
     inspect_static_source(&input).await?;
 
@@ -152,7 +151,14 @@ pub(super) async fn export_image_variants(
                 stage: format!("Creating {} variant", preset.label()),
             },
         );
-        render_variant(&input, output.working_path(), *preset, cancel_token.clone()).await?;
+        render_variant(
+            &input,
+            format,
+            output.working_path(),
+            *preset,
+            cancel_token.clone(),
+        )
+        .await?;
     }
 
     let mut result = commit_variant_outputs(prepared)?;
@@ -183,12 +189,56 @@ fn prepare_variant_outputs(
         .collect()
 }
 
+impl ImageExportPreset {
+    fn format(self) -> Format {
+        match self {
+            Self::Web | Self::Preview => Format::WebP,
+            Self::Email | Self::Social => Format::Jpg,
+        }
+    }
+
+    fn helper_options(self) -> ImageOptions {
+        let jpeg = self.format() == Format::Jpg;
+        ImageOptions {
+            quality: Some(self.quality()),
+            resize: Some(Resize::Shrink(self.max_dimension(), self.max_dimension())),
+            strip: true,
+            orient: true,
+            srgb: true,
+            flatten: jpeg,
+            lzw: false,
+            webp_method: (!jpeg).then_some(6),
+        }
+    }
+}
+
 async fn render_variant(
     input: &Path,
+    input_format: Format,
     output: &Path,
     preset: ImageExportPreset,
     cancel_token: CancellationToken,
 ) -> Result<(), ConversionError> {
+    if imageio::handles(input_format, preset.format(), 1) {
+        imageio::convert(
+            input,
+            output,
+            preset.format(),
+            &preset.helper_options(),
+            cancel_token,
+        )
+        .await?;
+        return verify_variant(output, preset).await;
+    }
+    if engines::resolve_tool("magick").is_none() {
+        return Err(ConversionError::MissingDependency {
+            tool: "magick".into(),
+            install_hint: format!(
+                "Install ImageMagick to export this {}",
+                input_format.label()
+            ),
+        });
+    }
     let geometry = format!("{}x{}>", preset.max_dimension(), preset.max_dimension());
     let quality = preset.quality().to_string();
     let mut command = tool_command("magick");
@@ -227,59 +277,22 @@ async fn render_variant(
 pub(super) async fn inspect_static_source(
     input: &Path,
 ) -> Result<StaticImageInfo, ConversionError> {
-    let mut command = tool_command("magick");
-    command
-        .args(["identify", "-ping", "-format", "%w|%h|%n\n"])
-        .arg(input);
-    let inspection = tokio::time::timeout(INSPECTION_TIMEOUT, command.output())
-        .await
-        .map_err(|_| ConversionError::Timeout {
-            seconds: INSPECTION_TIMEOUT.as_secs(),
-        })?
-        .map_err(|error| ConversionError::ProcessFailed {
-            message: format!("Could not inspect the source image: {error}"),
-            stderr: String::new(),
-            exit_code: None,
-        })?;
-
-    if !inspection.status.success() {
-        return Err(ConversionError::ProcessFailed {
-            message: "The source image could not be read".into(),
-            stderr: String::from_utf8_lossy(&inspection.stderr).into(),
-            exit_code: inspection.status.code(),
-        });
-    }
-
-    let summary = String::from_utf8_lossy(&inspection.stdout);
-    let values = summary
-        .lines()
-        .next()
-        .map(|line| line.split('|').collect::<Vec<_>>())
-        .unwrap_or_default();
-    let width = values
-        .first()
-        .and_then(|value| value.trim().parse::<u32>().ok());
-    let height = values
-        .get(1)
-        .and_then(|value| value.trim().parse::<u32>().ok());
-    let frame_count = values
-        .get(2)
-        .and_then(|value| value.trim().parse::<u32>().ok());
-
-    if frame_count.is_some_and(|count| count > 1) {
-        return Err(ConversionError::ProcessFailed {
+    let structure = tokio::time::timeout(
+        INSPECTION_TIMEOUT,
+        verification::inspect_image_structure(input, CancellationToken::new()),
+    )
+    .await
+    .map_err(|_| ConversionError::Timeout {
+        seconds: INSPECTION_TIMEOUT.as_secs(),
+    })??;
+    match structure.frames.as_slice() {
+        [frame] => Ok(StaticImageInfo {
+            width: frame.width,
+            height: frame.height,
+        }),
+        _ => Err(ConversionError::ProcessFailed {
             message: "This tool accepts static images only. Convert animated or multi-page files to a static image first.".into(),
             stderr: String::new(),
-            exit_code: None,
-        });
-    }
-    match (width, height, frame_count) {
-        (Some(width), Some(height), Some(1)) if width > 0 && height > 0 => {
-            Ok(StaticImageInfo { width, height })
-        }
-        _ => Err(ConversionError::ProcessFailed {
-            message: "The source image dimensions and frame count could not be verified".into(),
-            stderr: summary.into(),
             exit_code: None,
         }),
     }
@@ -306,41 +319,26 @@ pub(super) async fn run_image_process(
 }
 
 async fn verify_variant(output: &Path, preset: ImageExportPreset) -> Result<(), ConversionError> {
-    engines::verification::nonempty_file(output)?;
-
-    let inspection = tool_command("magick")
-        .args(["identify", "-ping", "-format", "%m|%w|%h|%n"])
-        .arg(output)
-        .output()
-        .await
-        .map_err(|error| ConversionError::ProcessFailed {
-            message: format!("Could not verify the exported image: {error}"),
-            stderr: String::new(),
-            exit_code: None,
-        })?;
-    if !inspection.status.success() {
-        engines::cleanup_partial(output);
-        return Err(ConversionError::ProcessFailed {
-            message: "The exported image could not be verified".into(),
-            stderr: String::from_utf8_lossy(&inspection.stderr).into(),
-            exit_code: inspection.status.code(),
-        });
-    }
-
-    let summary = String::from_utf8_lossy(&inspection.stdout);
-    let values = summary.split('|').collect::<Vec<_>>();
-    let width = values.get(1).and_then(|value| value.parse::<u32>().ok());
-    let height = values.get(2).and_then(|value| value.parse::<u32>().ok());
-    let frames = values.get(3).and_then(|value| value.parse::<u32>().ok());
-    let valid = values.first().copied() == Some(preset.expected_magick_format())
-        && width.is_some_and(|value| value > 0 && value <= preset.max_dimension())
-        && height.is_some_and(|value| value > 0 && value <= preset.max_dimension())
-        && frames == Some(1);
+    verification::nonempty_file(output)?;
+    let structure =
+        match verification::inspect_image_structure(output, CancellationToken::new()).await {
+            Ok(structure) => structure,
+            Err(error) => {
+                engines::cleanup_partial(output);
+                return Err(error);
+            }
+        };
+    let max = preset.max_dimension();
+    let valid = structure.magick_format == preset.expected_magick_format()
+        && matches!(
+            structure.frames.as_slice(),
+            [frame] if frame.width <= max && frame.height <= max
+        );
     if !valid {
         engines::cleanup_partial(output);
         return Err(ConversionError::ProcessFailed {
             message: "The exported image did not match the selected variant".into(),
-            stderr: summary.into(),
+            stderr: format!("{} {:?}", structure.magick_format, structure.frames),
             exit_code: None,
         });
     }
@@ -433,19 +431,13 @@ mod tests {
 
     #[tokio::test]
     async fn renders_verified_variants_without_upscaling_or_changing_the_source() {
-        if engines::resolve_tool("magick").is_none() {
+        if !imageio::handles(Format::Png, Format::WebP, 1) {
             return;
         }
 
         let directory = tempfile::tempdir().expect("fixture directory");
         let source = directory.path().join("source[final].png");
-        let status = tool_command("magick")
-            .args(["-size", "2400x1200", "gradient:#112244-#99bbff"])
-            .arg(&source)
-            .status()
-            .await
-            .expect("generate source image");
-        assert!(status.success());
+        imageio::fixtures::png(&source, 2400, 1200, [0x11, 0x22, 0x44, 0x80]);
         let source_before = std::fs::read(&source).expect("source bytes");
 
         let cases = [
@@ -459,19 +451,26 @@ mod tests {
                 directory
                     .path()
                     .join(format!("{}.{}", preset.label(), preset.extension()));
-            render_variant(&source, &output, preset, CancellationToken::new())
-                .await
-                .unwrap_or_else(|error| panic!("render {}: {error:?}", preset.label()));
-            let dimensions = tool_command("magick")
-                .args(["identify", "-ping", "-format", "%wx%h"])
-                .arg(&output)
-                .output()
-                .await
-                .expect("inspect output");
-            assert!(dimensions.status.success());
+            render_variant(
+                &source,
+                Format::Png,
+                &output,
+                preset,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("render {}: {error:?}", preset.label()));
+            let structure =
+                verification::inspect_image_structure(&output, CancellationToken::new())
+                    .await
+                    .expect("inspect output");
+            assert_eq!(structure.magick_format, preset.expected_magick_format());
             assert_eq!(
-                String::from_utf8_lossy(&dimensions.stdout),
-                format!("{expected_width}x{expected_height}")
+                structure.frames,
+                vec![verification::ImageFrameStructure {
+                    width: expected_width,
+                    height: expected_height,
+                }]
             );
         }
         assert_eq!(std::fs::read(&source).expect("source after"), source_before);
@@ -479,19 +478,13 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_animated_sources_instead_of_silently_exporting_one_frame() {
-        if engines::resolve_tool("magick").is_none() {
+        if !imageio::can_read(Format::Gif) {
             return;
         }
 
         let directory = tempfile::tempdir().expect("fixture directory");
         let source = directory.path().join("animated.gif");
-        let status = tool_command("magick")
-            .args(["-size", "32x32", "xc:red", "-size", "32x32", "xc:blue"])
-            .arg(&source)
-            .status()
-            .await
-            .expect("generate animated source");
-        assert!(status.success());
+        imageio::fixtures::multiframe_gif(&source);
 
         let result = inspect_static_source(&source).await;
         assert!(matches!(result, Err(ConversionError::ProcessFailed { .. })));

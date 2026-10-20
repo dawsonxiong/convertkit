@@ -426,7 +426,7 @@ pub(super) async fn encode_video(
         if resolve_tool(tool).is_none() {
             return Err(ConversionError::MissingDependency {
                 tool: tool.into(),
-                install_hint: "Install FFmpeg with Homebrew".into(),
+                install_hint: "Reinstall ConvertKit to restore its bundled FFmpeg".into(),
             });
         }
     }
@@ -537,7 +537,7 @@ pub(super) async fn remove_audio(
         if resolve_tool(tool).is_none() {
             return Err(ConversionError::MissingDependency {
                 tool: tool.into(),
-                install_hint: "Install FFmpeg with Homebrew".into(),
+                install_hint: "Reinstall ConvertKit to restore its bundled FFmpeg".into(),
             });
         }
     }

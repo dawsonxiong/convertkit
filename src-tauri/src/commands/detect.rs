@@ -69,7 +69,7 @@ pub struct InputCollectionResult {
 pub async fn check_dependencies() -> Vec<DependencyStatus> {
     let tools: Vec<(&str, bool)> = vec![
         ("ffmpeg", true),
-        ("magick", true),
+        ("magick", false),
         ("pandoc", false),
         ("resvg", false),
         ("vtracer", false),
@@ -77,9 +77,6 @@ pub async fn check_dependencies() -> Vec<DependencyStatus> {
         ("tectonic", false),
         ("pdfinfo", false),
         ("pdftotext", false),
-        ("pdfseparate", false),
-        ("pdfunite", false),
-        ("gs", false),
         ("whisper-cli", false),
     ];
 
@@ -659,27 +656,31 @@ pub async fn read_file_thumbnail(path: String) -> Result<String, String> {
         return Ok(format!("data:{};base64,{}", mime, b64));
     }
 
-    // For raster images, shell out to magick to get a 200x200 PNG thumbnail.
-    let output = tool_command("magick")
-        .arg(&p)
-        .args(["-resize", "200x200", "-quality", "80", "png:-"])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run magick for thumbnail: {e}"))?;
-
-    if !output.status.success() {
-        // Fall back to reading the full file.
-        return read_file_thumbnail_fallback(&p, mime).await;
-    }
-
-    let bytes = output.stdout;
+    // Raster thumbnails come from the bundled ImageIO helper, with
+    // ImageMagick as a fallback for anything it cannot decode.
+    let bytes = match crate::engines::imageio::thumbnail(&p, 200).await {
+        Ok(bytes) => bytes,
+        Err(_) if resolve_tool("magick").is_some() => {
+            let output = tool_command("magick")
+                .arg(&p)
+                .args(["-resize", "200x200", "-quality", "80", "png:-"])
+                .output()
+                .await
+                .map_err(|e| format!("Failed to run magick for thumbnail: {e}"))?;
+            if !output.status.success() {
+                return read_file_thumbnail_fallback(&p, mime).await;
+            }
+            output.stdout
+        }
+        Err(_) => return read_file_thumbnail_fallback(&p, mime).await,
+    };
     if bytes.is_empty() {
         return read_file_thumbnail_fallback(&p, mime).await;
     }
 
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    // Thumbnail is always PNG from magick.
+    // Both thumbnail paths produce PNG.
     Ok(format!("data:image/png;base64,{}", b64))
 }
 
@@ -834,22 +835,17 @@ async fn probe_tool(name: &str) -> (bool, Option<String>) {
 async fn probe_image_dimensions(
     path: &std::path::Path,
 ) -> Result<(Option<u32>, Option<u32>), String> {
-    let first_frame = format!("{}[0]", path.to_string_lossy());
-    let output = tool_command("magick")
-        .args(["identify", "-ping", "-format", "%w %h", &first_frame])
-        .output()
-        .await
-        .map_err(|error| format!("Failed to inspect image dimensions: {error}"))?;
-
-    if !output.status.success() {
-        return Ok((None, None));
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout);
-    let mut parts = value.split_whitespace();
-    let width = parts.next().and_then(|part| part.parse::<u32>().ok());
-    let height = parts.next().and_then(|part| part.parse::<u32>().ok());
-    Ok((width, height))
+    let first_frame = crate::engines::verification::inspect_image_structure(
+        path,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .ok()
+    .and_then(|structure| structure.frames.into_iter().next());
+    Ok(match first_frame {
+        Some(frame) => (Some(frame.width), Some(frame.height)),
+        None => (None, None),
+    })
 }
 
 #[cfg(test)]

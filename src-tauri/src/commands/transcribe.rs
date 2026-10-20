@@ -472,7 +472,7 @@ pub(super) async fn transcribe_media(
         });
     }
     for (tool, hint) in [
-        ("ffmpeg", "Install FFmpeg with Homebrew"),
+        ("ffmpeg", "Reinstall ConvertKit to restore its bundled FFmpeg"),
         (
             "whisper-cli",
             "Reinstall ConvertKit or install whisper-cpp with Homebrew",

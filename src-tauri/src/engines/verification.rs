@@ -8,7 +8,7 @@ use crate::engines::process::{run_process_with_output, ProcessMessages};
 use crate::error::ConversionError;
 use crate::formats::Format;
 
-use super::{cleanup_partial, tool_command};
+use super::{cleanup_partial, imageio, resolve_tool, tool_command};
 
 const IMAGE_INSPECTION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_IMAGE_INSPECTION_BYTES: usize = 1024 * 1024;
@@ -69,6 +69,36 @@ pub async fn inspect_image_structure(
     if cancel_token.is_cancelled() {
         return Err(ConversionError::Cancelled);
     }
+    if let Some(structure) = read_ico_structure(path) {
+        return Ok(structure);
+    }
+    // The bundled helper reads every raster format ConvertKit writes. Only
+    // sources it cannot decode, such as SVG, need ImageMagick.
+    let helper_error = if resolve_tool(imageio::HELPER).is_some() {
+        match imageio::identify(path, cancel_token.clone()).await {
+            Ok(output) => return parse_image_structure(&output),
+            Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
+            Err(error) => Some(error),
+        }
+    } else {
+        None
+    };
+    if resolve_tool("magick").is_none() {
+        return Err(helper_error.unwrap_or_else(imageio::missing_helper));
+    }
+    inspect_with_magick(path, cancel_token).await
+}
+
+/// ImageMagick reports animation frames at their own size while ImageIO
+/// reports the composited canvas, so files ImageMagick wrote are verified
+/// with ImageMagick.
+pub async fn inspect_with_magick(
+    path: &Path,
+    cancel_token: CancellationToken,
+) -> Result<ImageStructure, ConversionError> {
+    if let Some(structure) = read_ico_structure(path) {
+        return Ok(structure);
+    }
     let mut command = tool_command("magick");
     command
         .args(["identify", "-ping", "-format", "%m|%w|%h|%n\n"])
@@ -87,6 +117,58 @@ pub async fn inspect_image_structure(
     )
     .await?;
     parse_image_structure(&output)
+}
+
+/// ICO directories are read here rather than through ImageIO, whose reader
+/// rejects icons holding two entries of the same width.
+fn read_ico_structure(path: &Path) -> Option<ImageStructure> {
+    let mut header = [0u8; 6];
+    let mut file = std::fs::File::open(path).ok()?;
+    file.read_exact(&mut header).ok()?;
+    if header[..4] != [0, 0, 1, 0] {
+        return None;
+    }
+    let size = file.metadata().ok()?.len();
+    if size > 64 * 1024 * 1024 {
+        return None;
+    }
+    let mut data = header.to_vec();
+    file.read_to_end(&mut data).ok()?;
+    parse_ico_structure(&data)
+}
+
+pub(crate) fn parse_ico_structure(data: &[u8]) -> Option<ImageStructure> {
+    const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    let count = usize::from(u16::from_le_bytes([*data.get(4)?, *data.get(5)?]));
+    if data.get(..4)? != [0, 0, 1, 0] || count == 0 {
+        return None;
+    }
+    let mut frames = Vec::with_capacity(count);
+    for index in 0..count {
+        let entry = data.get(6 + index * 16..6 + (index + 1) * 16)?;
+        let length = u32::from_le_bytes(entry[8..12].try_into().ok()?) as usize;
+        let offset = u32::from_le_bytes(entry[12..16].try_into().ok()?) as usize;
+        let payload = data.get(offset..offset.checked_add(length)?)?;
+        let (width, height) = if payload.starts_with(PNG_SIGNATURE) {
+            let ihdr = payload.get(16..24)?;
+            (
+                u32::from_be_bytes(ihdr[..4].try_into().ok()?),
+                u32::from_be_bytes(ihdr[4..].try_into().ok()?),
+            )
+        } else {
+            // A stored 0 means 256 px.
+            let edge = |value: u8| if value == 0 { 256 } else { u32::from(value) };
+            (edge(entry[0]), edge(entry[1]))
+        };
+        if width == 0 || height == 0 {
+            return None;
+        }
+        frames.push(ImageFrameStructure { width, height });
+    }
+    Some(ImageStructure {
+        magick_format: "ICO".into(),
+        frames,
+    })
 }
 
 pub(crate) fn parse_image_structure(output: &[u8]) -> Result<ImageStructure, ConversionError> {
@@ -211,5 +293,45 @@ mod tests {
         );
         assert!(file_with_signature(&invalid, b"\x89PNG").is_err());
         assert!(!invalid.exists());
+    }
+
+    #[test]
+    fn reads_icon_directories_including_same_width_entries() {
+        let png = |width: u32, height: u32| {
+            let mut data = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+            data.extend(width.to_be_bytes());
+            data.extend(height.to_be_bytes());
+            data
+        };
+        let frames = [png(20, 15), png(20, 10)];
+        let mut icon = vec![0, 0, 1, 0, 2, 0];
+        let mut offset = 6 + 16 * frames.len();
+        for frame in &frames {
+            icon.extend([20, 0, 0, 0, 1, 0, 32, 0]);
+            icon.extend((frame.len() as u32).to_le_bytes());
+            icon.extend((offset as u32).to_le_bytes());
+            offset += frame.len();
+        }
+        for frame in &frames {
+            icon.extend(frame);
+        }
+
+        let structure = parse_ico_structure(&icon).expect("icon structure");
+        assert_eq!(structure.magick_format, "ICO");
+        assert_eq!(
+            structure.frames,
+            vec![
+                ImageFrameStructure {
+                    width: 20,
+                    height: 15
+                },
+                ImageFrameStructure {
+                    width: 20,
+                    height: 10
+                },
+            ]
+        );
+        assert!(parse_ico_structure(&icon[..30]).is_none());
+        assert!(parse_ico_structure(b"GIF89a").is_none());
     }
 }

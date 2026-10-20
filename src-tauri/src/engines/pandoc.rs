@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::engines::process::{run_process, ProcessMessages};
 use crate::engines::{
-    tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
+    resolve_tool, tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
 };
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
@@ -18,14 +18,13 @@ impl ConversionEngine for PandocEngine {
         "pandoc"
     }
 
+    // DOCX to PDF prefers LibreOffice, which keeps the layout; the router
+    // only reaches Pandoc for it when LibreOffice is not installed.
     fn supports(&self, input: Format, output: Format) -> bool {
         input.category() == FileCategory::Document
             && output.category() == FileCategory::Document
             && input != Format::Pdf
             && input != output
-            // LibreOffice handles DOCX→PDF better; only fall through to Pandoc
-            // for other document pairs.
-            && !(input == Format::Docx && output == Format::Pdf)
     }
 
     async fn convert(
@@ -53,9 +52,17 @@ impl ConversionEngine for PandocEngine {
             args.extend(["-t".into(), "gfm".into()]);
         }
 
-        // PDF needs a LaTeX engine.
+        // PDF needs a LaTeX engine. Pandoc looks a bare engine name up on
+        // PATH, which is nearly empty for an app launched from Finder, so it
+        // gets the resolved (normally bundled) Tectonic.
         if request.output_format == Format::Pdf {
-            args.extend(["--pdf-engine".into(), "tectonic".into()]);
+            let tectonic = resolve_tool("tectonic").ok_or_else(|| {
+                ConversionError::MissingDependency {
+                    tool: "tectonic".into(),
+                    install_hint: "Reinstall ConvertKit to restore its bundled Tectonic".into(),
+                }
+            })?;
+            args.push(format!("--pdf-engine={}", tectonic.to_string_lossy()));
         }
 
         args.extend(["-o".into(), output.to_string_lossy().into()]);

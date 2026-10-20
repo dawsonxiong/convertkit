@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::engines::imageio::{self, ImageOptions, Resize};
 use crate::engines::process::{run_process, ProcessMessages};
 use crate::engines::verification::{ImageFrameStructure, ImageStructure};
 use crate::engines::{self, tool_command, verification, ConversionResult};
@@ -102,7 +103,7 @@ async fn run_resize(
     format: Format,
     cancel_token: CancellationToken,
 ) -> Result<ConversionResult, ConversionError> {
-    let source_structure =
+    let mut source_structure =
         verification::inspect_image_structure(input, cancel_token.clone()).await?;
     if !verification::magick_format_matches(format, &source_structure.magick_format) {
         return Err(resize_verification_error(
@@ -111,21 +112,43 @@ async fn run_resize(
         ));
     }
 
-    let geometry = resize_geometry(width, height, preserve_aspect);
-    let mut command = tool_command("magick");
-    command.arg(input).args(["-resize", &geometry]).arg(output);
-    run_process(
-        command,
-        cancel_token.clone(),
-        RESIZE_TIMEOUT,
-        &[output],
-        ProcessMessages {
-            start: "Failed to start image resize",
-            wait: "Image resize process could not be awaited",
-            failure: "Image resize failed",
-        },
-    )
-    .await?;
+    let rendered_by_helper = imageio::handles(format, format, source_structure.frames.len());
+    if rendered_by_helper {
+        let options = ImageOptions {
+            resize: Some(if preserve_aspect {
+                Resize::Fit(width, height)
+            } else {
+                Resize::Exact(width, height)
+            }),
+            quality: resize_quality(format),
+            ..ImageOptions::default()
+        };
+        imageio::convert(input, output, format, &options, cancel_token.clone()).await?;
+    } else if engines::resolve_tool("magick").is_some() {
+        // Compare like with like: ImageMagick and ImageIO disagree on the
+        // size of animation frames.
+        source_structure = verification::inspect_with_magick(input, cancel_token.clone()).await?;
+        let geometry = resize_geometry(width, height, preserve_aspect);
+        let mut command = tool_command("magick");
+        command.arg(input).args(["-resize", &geometry]).arg(output);
+        run_process(
+            command,
+            cancel_token.clone(),
+            RESIZE_TIMEOUT,
+            &[output],
+            ProcessMessages {
+                start: "Failed to start image resize",
+                wait: "Image resize process could not be awaited",
+                failure: "Image resize failed",
+            },
+        )
+        .await?;
+    } else {
+        return Err(ConversionError::MissingDependency {
+            tool: "magick".into(),
+            install_hint: format!("Install ImageMagick to resize this {}", format.label()),
+        });
+    }
 
     let output_size = verify_resized_output(
         output,
@@ -134,6 +157,7 @@ async fn run_resize(
         width,
         height,
         preserve_aspect,
+        rendered_by_helper,
         cancel_token,
     )
     .await?;
@@ -146,6 +170,7 @@ async fn run_resize(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn verify_resized_output(
     output: &Path,
     source: &ImageStructure,
@@ -153,10 +178,16 @@ async fn verify_resized_output(
     width: u32,
     height: u32,
     preserve_aspect: bool,
+    rendered_by_helper: bool,
     cancel_token: CancellationToken,
 ) -> Result<u64, ConversionError> {
     let output_size = verification::nonempty_file(output)?;
-    let candidate = match verification::inspect_image_structure(output, cancel_token).await {
+    let inspection = if rendered_by_helper {
+        verification::inspect_image_structure(output, cancel_token).await
+    } else {
+        verification::inspect_with_magick(output, cancel_token).await
+    };
+    let candidate = match inspection {
         Ok(candidate) => candidate,
         Err(error) => {
             engines::cleanup_partial(output);
@@ -237,6 +268,16 @@ fn rounded_ratio(value: u64, multiplier: u64, divisor: u64) -> u32 {
     let scaled = value.saturating_mul(multiplier);
     let rounded = scaled.saturating_add(divisor / 2) / divisor;
     u32::try_from(rounded.max(1)).unwrap_or(u32::MAX)
+}
+
+/// ImageIO has no "reuse the source quality" mode, so lossy formats get one
+/// high setting instead of the encoder default.
+fn resize_quality(format: Format) -> Option<u8> {
+    matches!(
+        format,
+        Format::Jpg | Format::WebP | Format::Avif | Format::Heic
+    )
+    .then_some(92)
 }
 
 fn resize_verification_error(message: &str, stderr: &str) -> ConversionError {
@@ -414,10 +455,75 @@ mod tests {
         token.cancel();
 
         let result =
-            verify_resized_output(&output, &source, Format::Png, 320, 240, true, token).await;
+            verify_resized_output(&output, &source, Format::Png, 320, 240, true, true, token).await;
 
         assert!(matches!(result, Err(ConversionError::Cancelled)));
         assert!(!output.exists());
+    }
+
+    #[tokio::test]
+    async fn resizes_with_only_the_bundled_helper() {
+        if !imageio::can_write(Format::Png) {
+            return;
+        }
+        let directory = tempfile::tempdir().expect("fixture directory");
+        let source = directory.path().join("source.png");
+        imageio::fixtures::png(&source, 128, 96, [0x25, 0x33, 0x4f, 0xff]);
+
+        for format in [
+            Format::Png,
+            Format::Jpg,
+            Format::WebP,
+            Format::Gif,
+            Format::Heic,
+            Format::Tiff,
+            Format::Bmp,
+            Format::Avif,
+        ] {
+            if !imageio::can_write(format) {
+                continue;
+            }
+            let input = directory
+                .path()
+                .join(format!("input.{}", format.extension()));
+            let output = directory
+                .path()
+                .join(format!("output.{}", format.extension()));
+            imageio::convert(
+                &source,
+                &input,
+                format,
+                &ImageOptions::default(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("create {} fixture: {error}", format.label()));
+
+            run_resize(
+                &input,
+                &output,
+                64,
+                40,
+                true,
+                format,
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("resize {}: {error}", format.label()));
+            let structure =
+                verification::inspect_image_structure(&output, CancellationToken::new())
+                    .await
+                    .expect("inspect output");
+            assert_eq!(
+                structure.frames,
+                vec![ImageFrameStructure {
+                    width: 53,
+                    height: 40,
+                }],
+                "{} keeps aspect",
+                format.label()
+            );
+        }
     }
 
     #[tokio::test]
@@ -521,6 +627,19 @@ mod tests {
                 verification::inspect_image_structure(&output, CancellationToken::new())
                     .await
                     .unwrap_or_else(|error| panic!("inspect multipage {extension}: {error}"));
+            // ImageIO composites GIF frames onto the full canvas, so a GIF's
+            // second frame is 40x30 there and 20x10 in ImageMagick.
+            let second = if extension == "gif" && imageio::can_read(format) {
+                ImageFrameStructure {
+                    width: 20,
+                    height: 15,
+                }
+            } else {
+                ImageFrameStructure {
+                    width: 20,
+                    height: 10,
+                }
+            };
             assert_eq!(
                 structure.frames,
                 vec![
@@ -528,10 +647,7 @@ mod tests {
                         width: 20,
                         height: 15,
                     },
-                    ImageFrameStructure {
-                        width: 20,
-                        height: 10,
-                    },
+                    second,
                 ],
                 "{extension} frame/page geometry and count"
             );

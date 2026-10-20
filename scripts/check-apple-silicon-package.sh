@@ -43,12 +43,48 @@ for packaged_binary in \
   "$APP_EXECUTABLE" \
   "$APP_PATH/Contents/MacOS/convertkit-vision-ocr" \
   "$APP_PATH/Contents/MacOS/convertkit-image-pdf" \
+  "$APP_PATH/Contents/MacOS/convertkit-imageio" \
+  "$APP_PATH/Contents/MacOS/convertkit-pdf" \
+  "$APP_PATH/Contents/MacOS/ffmpeg" \
+  "$APP_PATH/Contents/MacOS/ffprobe" \
+  "$APP_PATH/Contents/MacOS/pandoc" \
+  "$APP_PATH/Contents/MacOS/tectonic" \
   "$APP_PATH/Contents/MacOS/whisper-cli"
 do
   [ -x "$packaged_binary" ] || fail "missing packaged executable: $packaged_binary"
   architectures=$(lipo -archs "$packaged_binary")
   [ "$architectures" = arm64 ] ||
     fail "$packaged_binary has architectures '$architectures', expected arm64"
+done
+
+printf 'Verifying the bundled FFmpeg runtime and its GPL notices...\n'
+ffmpeg_runtime="$APP_PATH/Contents/Resources/ffmpeg-runtime"
+[ -f "$ffmpeg_runtime/NOTICE.txt" ] || fail "the FFmpeg NOTICE is missing"
+[ -f "$ffmpeg_runtime/licenses/FFmpeg-COPYING.GPLv2.txt" ] || fail "the FFmpeg GPL text is missing"
+for runtime_library in "$ffmpeg_runtime"/*.dylib; do
+  [ -f "$runtime_library" ] || fail "the bundled FFmpeg libraries are missing"
+  [ "$(lipo -archs "$runtime_library")" = arm64 ] || fail "$runtime_library is not arm64"
+  if otool -L "$runtime_library" | tail -n +2 | awk '{ print $1 }' |
+    grep -Ev '^(/System/|/usr/lib/|@rpath/|@loader_path/)' >/dev/null; then
+    fail "$runtime_library links a library outside the bundle"
+  fi
+done
+"$APP_PATH/Contents/MacOS/ffmpeg" -hide_banner -buildconf | grep -q -- '--enable-gpl' ||
+  fail "the bundled FFmpeg is not the pinned GPL build"
+if "$APP_PATH/Contents/MacOS/ffmpeg" -hide_banner -buildconf | grep -Eq -- '--enable-(version3|nonfree)'; then
+  fail "the bundled FFmpeg must stay GPLv2-or-later and redistributable"
+fi
+
+printf 'Verifying the bundled document tools and their notices...\n'
+document_runtime="$APP_PATH/Contents/Resources/document-runtime"
+[ -f "$document_runtime/NOTICE.txt" ] || fail "the document tools NOTICE is missing"
+[ -f "$document_runtime/licenses/pandoc-COPYING.md" ] || fail "the Pandoc licence is missing"
+[ -f "$document_runtime/licenses/tectonic-LICENSE.txt" ] || fail "the Tectonic licence is missing"
+for document_tool in pandoc tectonic; do
+  if otool -L "$APP_PATH/Contents/MacOS/$document_tool" | tail -n +2 | awk '{ print $1 }' |
+    grep -Ev '^(/System/|/usr/lib/)' >/dev/null; then
+    fail "$document_tool links a library outside macOS"
+  fi
 done
 
 # This is a package-integrity gate, not the credentialed release signature.
@@ -63,19 +99,19 @@ printf 'Auditing the packaged Apple Silicon runtime...\n'
 CARGO_BUILD_TARGET=$TARGET \
   sh scripts/smoke-whisper-runtime.sh --verify-only "$APP_PATH"
 
-printf 'Running the packaged quality-video gate with the resolved FFmpeg installation...\n'
+printf 'Running the packaged quality-video gate with the bundled FFmpeg...\n'
 CARGO_BUILD_TARGET=$TARGET \
   sh scripts/smoke-video-quality.sh "$APP_PATH"
 
-printf 'Running the packaged target-size video gate with the resolved FFmpeg installation...\n'
+printf 'Running the packaged target-size video gate with the bundled FFmpeg...\n'
 CARGO_BUILD_TARGET=$TARGET \
   sh scripts/smoke-video-target-size.sh "$APP_PATH"
 
-printf 'Running the packaged audio-compression gate with the resolved FFmpeg installation...\n'
+printf 'Running the packaged audio-compression gate with the bundled FFmpeg...\n'
 CARGO_BUILD_TARGET=$TARGET \
   sh scripts/smoke-audio-compression.sh "$APP_PATH"
 
-printf 'Running the packaged target-size image gate with the resolved ImageMagick installation...\n'
+printf 'Running the packaged target-size image gate with the bundled ImageIO helper...\n'
 CARGO_BUILD_TARGET=$TARGET \
   sh scripts/smoke-image-target-size.sh "$APP_PATH"
 

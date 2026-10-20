@@ -60,8 +60,8 @@ pub(super) async fn recognize_text(
     })?;
     let is_pdf = extension(&input).as_deref() == Some("pdf");
     if is_pdf && output_format == OcrOutputFormat::Text {
-        require_poppler("pdfinfo", "Install Poppler to inspect scanned PDF pages")?;
-        require_poppler("pdftoppm", "Install Poppler to render scanned PDF pages")?;
+        require_poppler("pdfinfo", "Reinstall ConvertKit to restore its PDF component")?;
+        require_poppler("pdftoppm", "Reinstall ConvertKit to restore its PDF component")?;
     }
 
     let extension = match output_format {

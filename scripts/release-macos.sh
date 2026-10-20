@@ -159,4 +159,9 @@ xcrun stapler validate "$dmg_path"
 spctl --assess --type execute --verbose=2 "$app_path"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
 
+# The bundled FFmpeg and Pandoc are GPL: publish their Corresponding Source
+# with the DMG.
+third_party_source_archive=$(sh "$project_dir/scripts/package-third-party-sources.sh" "$(dirname "$dmg_path")")
+
 echo "Verified notarized release: $dmg_path"
+echo "Publish alongside it (GPL Corresponding Source): $third_party_source_archive"

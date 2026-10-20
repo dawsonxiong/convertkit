@@ -4,9 +4,10 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::engines::imageio::{self, ImageOptions};
 use crate::engines::process::{run_process, ProcessMessages};
 use crate::engines::{
-    tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
+    resolve_tool, tool_command, verification, ConversionEngine, ConversionRequest, ConversionResult,
 };
 use crate::error::ConversionError;
 use crate::formats::{FileCategory, Format};
@@ -41,7 +42,7 @@ impl ConversionEngine for ImageMagickEngine {
             ProgressPayload {
                 job_id: request.job_id.clone(),
                 percent: -1,
-                stage: "Converting with ImageMagick".to_string(),
+                stage: "Converting image".to_string(),
             },
         );
 
@@ -56,7 +57,11 @@ impl ConversionEngine for ImageMagickEngine {
     }
 }
 
-async fn convert_image(
+/// Shared raster conversion for the ImageIO and ImageMagick engines. The
+/// bundled ImageIO helper renders whenever it can read the source and write
+/// the target; ImageMagick only renders what it cannot, such as SVG sources or
+/// animated WebP output.
+pub(crate) async fn convert_image(
     input: &Path,
     output: &Path,
     input_format: Format,
@@ -93,46 +98,50 @@ async fn convert_image(
         .path()
         .join(format!("converted.{}", output_format.extension()));
 
-    let mut command = tool_command("magick");
-    command.arg(input).arg("-strip");
-
-    match output_format {
-        Format::Jpg => {
-            command.args(["-quality", "90"]);
-        }
-        Format::WebP => {
-            command.args(["-quality", "85"]);
-        }
-        Format::Avif => {
-            command.args(["-quality", "80"]);
-        }
-        _ => {}
-    }
-    command.arg(&workspace_output);
-
-    let process_result = run_process(
-        command,
-        cancel_token.clone(),
-        Duration::from_secs(10 * 60),
-        &[&workspace_output],
-        ProcessMessages {
-            start: "Failed to start ImageMagick",
-            wait: "ImageMagick process could not be awaited",
-            failure: "ImageMagick conversion failed",
-        },
-    )
-    .await;
+    let rendered_by_helper = imageio::handles(input_format, output_format, source.frames.len());
+    let process_result = if rendered_by_helper {
+        let options = ImageOptions {
+            quality: output_quality(output_format),
+            strip: true,
+            ..ImageOptions::default()
+        };
+        imageio::convert(
+            input,
+            &workspace_output,
+            output_format,
+            &options,
+            cancel_token.clone(),
+        )
+        .await
+    } else if resolve_tool("magick").is_some() {
+        convert_with_magick(
+            &workspace_output,
+            input,
+            output_format,
+            cancel_token.clone(),
+        )
+        .await
+    } else {
+        Err(ConversionError::MissingDependency {
+            tool: "magick".into(),
+            install_hint: format!(
+                "Install ImageMagick to convert this {} to {}",
+                input_format.label(),
+                output_format.label()
+            ),
+        })
+    };
     if let Err(error) = process_result {
         cleanup_numbered_sidecars(&workspace_output);
         return Err(error);
     }
 
-    let candidate = match verification::inspect_image_structure(
-        &workspace_output,
-        cancel_token.clone(),
-    )
-    .await
-    {
+    let inspection = if rendered_by_helper {
+        verification::inspect_image_structure(&workspace_output, cancel_token.clone()).await
+    } else {
+        verification::inspect_with_magick(&workspace_output, cancel_token.clone()).await
+    };
+    let candidate = match inspection {
         Ok(candidate) => candidate,
         Err(error) => {
             cleanup_numbered_sidecars(&workspace_output);
@@ -178,6 +187,42 @@ async fn convert_image(
     })
 }
 
+fn output_quality(format: Format) -> Option<u8> {
+    match format {
+        Format::Jpg | Format::Heic => Some(90),
+        Format::WebP => Some(85),
+        Format::Avif => Some(80),
+        _ => None,
+    }
+}
+
+async fn convert_with_magick(
+    workspace_output: &Path,
+    input: &Path,
+    output_format: Format,
+    cancel_token: CancellationToken,
+) -> Result<(), ConversionError> {
+    let mut command = tool_command("magick");
+    command.arg(input).arg("-strip");
+    if let Some(quality) = output_quality(output_format).filter(|_| output_format != Format::Heic) {
+        command.args(["-quality", &quality.to_string()]);
+    }
+    command.arg(workspace_output);
+
+    run_process(
+        command,
+        cancel_token,
+        Duration::from_secs(10 * 60),
+        &[workspace_output],
+        ProcessMessages {
+            start: "Failed to start ImageMagick",
+            wait: "ImageMagick process could not be awaited",
+            failure: "ImageMagick conversion failed",
+        },
+    )
+    .await
+}
+
 fn validate_conversion_topology(
     source: &verification::ImageStructure,
     output_format: Format,
@@ -190,6 +235,18 @@ fn validate_conversion_topology(
             ),
             output: format!(
                 "a single {} file without discarding frames",
+                output_format.label()
+            ),
+        });
+    }
+    let first = source.frames.first();
+    if matches!(output_format, Format::Gif | Format::WebP)
+        && source.frames.iter().any(|frame| Some(frame) != first)
+    {
+        return Err(ConversionError::UnsupportedConversion {
+            input: "This image has frames or pages of different sizes".into(),
+            output: format!(
+                "an animated {}, whose frames share one canvas",
                 output_format.label()
             ),
         });
@@ -320,7 +377,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("tempdir");
         for (input_extension, input_format, output_extension, output_format) in [
             ("gif", Format::Gif, "tiff", Format::Tiff),
-            ("ico", Format::Ico, "webp", Format::WebP),
+            ("ico", Format::Ico, "tiff", Format::Tiff),
         ] {
             let input = directory.path().join(format!("source.{input_extension}"));
             let output = directory
@@ -338,10 +395,16 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("convert {input_extension}: {error}"));
 
-            let structure =
-                verification::inspect_image_structure(&output, CancellationToken::new())
-                    .await
-                    .unwrap_or_else(|error| panic!("inspect {output_extension}: {error}"));
+            // Inspect with the same frame model as the backend that rendered.
+            let structure = verification::inspect_with_magick(&output, CancellationToken::new())
+                .await
+                .unwrap_or_else(|error| panic!("inspect {output_extension}: {error}"));
+            // ImageIO composites GIF frames onto the full canvas.
+            let second = if input_format == Format::Gif && imageio::can_read(input_format) {
+                (40, 30)
+            } else {
+                (20, 10)
+            };
             assert_eq!(
                 structure.frames,
                 vec![
@@ -350,8 +413,8 @@ mod tests {
                         height: 30,
                     },
                     verification::ImageFrameStructure {
-                        width: 20,
-                        height: 10,
+                        width: second.0,
+                        height: second.1,
                     },
                 ],
                 "{input_extension} to {output_extension} topology"
@@ -389,6 +452,45 @@ mod tests {
                 .expect("read fixture directory")
                 .flatten()
                 .all(|entry| !entry.file_name().to_string_lossy().starts_with(&prefix)));
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_animations_whose_frames_differ_in_size_before_rendering() {
+        if !imageio::can_read(Format::Ico) {
+            return;
+        }
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut entries = Vec::new();
+        for (index, (width, height)) in [(40, 30), (20, 10)].into_iter().enumerate() {
+            let path = directory.path().join(format!("entry-{index}.png"));
+            imageio::fixtures::png(&path, width, height, [0x25, 0x33, 0x4f, 0xff]);
+            entries.push(std::fs::read(path).expect("entry"));
+        }
+        let input = directory.path().join("source.ico");
+        std::fs::write(
+            &input,
+            crate::engines::codecs::encode_ico(&entries).expect("icon"),
+        )
+        .expect("write icon");
+        for format in [Format::WebP, Format::Gif] {
+            let output = directory
+                .path()
+                .join(format!("rejected.{}", format.extension()));
+            let result = convert_image(
+                &input,
+                &output,
+                Format::Ico,
+                format,
+                CancellationToken::new(),
+            )
+            .await;
+            assert!(
+                matches!(result, Err(ConversionError::UnsupportedConversion { .. })),
+                "{}",
+                format.label()
+            );
+            assert!(!output.exists());
         }
     }
 
