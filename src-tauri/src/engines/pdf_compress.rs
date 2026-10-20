@@ -99,7 +99,7 @@ pub fn save(document: &mut Document, path: &std::path::Path) -> Result<u64, Conv
         .build();
     document
         .save_with_options(&mut file, options)
-        .and_then(|()| std::io::Write::flush(&mut file).map_err(lopdf::Error::from))
+        .and_then(|()| std::io::Write::flush(&mut file))
         .map_err(|error| pdf_error("The PDF could not be written", error))?;
     drop(file);
     crate::engines::verification::file_with_signature(path, b"%PDF-")
