@@ -35,6 +35,7 @@
       "binaries/convertkit-vision-ocr",
       "binaries/convertkit-image-pdf",
       "binaries/convertkit-imageio",
+      "binaries/convertkit-pdf",
       "binaries/ffmpeg",
       "binaries/ffprobe",
       "binaries/whisper-cli"

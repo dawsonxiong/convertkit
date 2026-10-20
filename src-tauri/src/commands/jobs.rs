@@ -1186,7 +1186,7 @@ fn job_capability_with_app(app: Option<&AppHandle>, request: &JobRequest) -> Job
             if input_format == Format::Pdf && *output_format == super::ocr::OcrOutputFormat::Text {
                 tools_capability(
                     input_path,
-                    &[("pdfinfo", "Poppler"), ("pdftoppm", "Poppler")],
+                    &[("pdfinfo", "PDF component"), ("pdftoppm", "PDF component")],
                 )
             } else {
                 JobCapability::available(input_path, "macOS Vision")
@@ -1229,10 +1229,9 @@ fn job_capability_with_app(app: Option<&AppHandle>, request: &JobRequest) -> Job
                     },
                     Vec::new(),
                 )
-            } else if *compression_goal == super::pdf::PdfCompressionGoal::FileSize {
-                tools_capability(input_path, &[("gs", "Ghostscript"), ("pdfinfo", "Poppler")])
             } else {
-                tool_capability(input_path, "gs", "Ghostscript")
+                // Compression runs in process; the page layout check uses the PDF helper.
+                tool_capability(input_path, "pdfinfo", "PDF component")
             }
         }
         JobRequest::CreateArchive { .. }
@@ -1269,7 +1268,7 @@ fn pdf_page_export_capability(
     }
     tools_capability(
         input_path,
-        &[("pdfinfo", "Poppler"), ("pdftoppm", "Poppler")],
+        &[("pdfinfo", "PDF component"), ("pdftoppm", "PDF component")],
     )
 }
 
@@ -1288,24 +1287,18 @@ fn pdf_split_capability(
         );
     }
 
-    let mut tools = vec![("pdfinfo", "Poppler"), ("pdfseparate", "Poppler")];
-    if mode == super::pdf::PdfSplitMode::Extract {
-        let pages = match super::pdf::parse_page_selection(page_selection) {
-            Ok(pages) => pages,
-            Err(_) => {
-                return JobCapability::unavailable(
-                    input_path,
-                    CapabilityIssue::InvalidSettings,
-                    "Enter pages such as 1-3, 5, 8-10.",
-                    Vec::new(),
-                );
-            }
-        };
-        if pages.len() > 1 {
-            tools.push(("pdfunite", "Poppler"));
-        }
+    if mode == super::pdf::PdfSplitMode::Extract
+        && super::pdf::parse_page_selection(page_selection).is_err()
+    {
+        return JobCapability::unavailable(
+            input_path,
+            CapabilityIssue::InvalidSettings,
+            "Enter pages such as 1-3, 5, 8-10.",
+            Vec::new(),
+        );
     }
-    tools_capability(input_path, &tools)
+    // Splitting and extracting run in process; only page inspection uses a tool.
+    tools_capability(input_path, &[("pdfinfo", "PDF component")])
 }
 
 fn pdf_merge_capability(input_paths: &[String]) -> JobCapability {
@@ -1372,14 +1365,9 @@ fn pdf_merge_capability(input_paths: &[String]) -> JobCapability {
         let helper_missing = missing_tools
             .iter()
             .any(|tool| tool == "convertkit-image-pdf");
-        let poppler_missing = missing_tools
-            .iter()
-            .any(|tool| tool == "pdfunite" || tool == "pdfinfo");
-        let message = match (poppler_missing, helper_missing) {
-            (true, true) => {
-                "Install Poppler and reinstall ConvertKit to restore PDF combining support."
-            }
-            (true, false) => "Install Poppler to combine files into a PDF.",
+        let pdf_missing = missing_tools.iter().any(|tool| tool == "pdfinfo");
+        let message = match (pdf_missing, helper_missing) {
+            (true, _) => "Reinstall ConvertKit to restore its PDF component.",
             (false, true) => "Reinstall ConvertKit to restore its image to PDF component.",
             (false, false) => "PDF combining is unavailable.",
         };
@@ -1393,7 +1381,8 @@ fn pdf_merge_capability(input_paths: &[String]) -> JobCapability {
 }
 
 fn combine_pdf_required_tools(includes_images: bool) -> Vec<&'static str> {
-    let mut tools = vec!["pdfunite", "pdfinfo"];
+    // Combining runs in process; the page count check uses the PDF helper.
+    let mut tools = vec!["pdfinfo"];
     if includes_images {
         tools.push("convertkit-image-pdf");
     }
@@ -1963,14 +1952,11 @@ mod tests {
     }
 
     #[test]
-    fn combine_pdf_requires_poppler_and_only_needs_the_image_helper_for_images() {
-        assert_eq!(
-            combine_pdf_required_tools(false),
-            vec!["pdfunite", "pdfinfo"]
-        );
+    fn combine_pdf_only_needs_the_image_helper_for_images() {
+        assert_eq!(combine_pdf_required_tools(false), vec!["pdfinfo"]);
         assert_eq!(
             combine_pdf_required_tools(true),
-            vec!["pdfunite", "pdfinfo", "convertkit-image-pdf"]
+            vec!["pdfinfo", "convertkit-image-pdf"]
         );
     }
 

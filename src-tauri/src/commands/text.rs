@@ -25,7 +25,7 @@ pub(super) fn supports_text_extraction(format: Format) -> bool {
 
 pub(super) fn required_tool(format: Format) -> Option<(&'static str, &'static str)> {
     match format {
-        Format::Pdf => Some(("pdftotext", "Poppler")),
+        Format::Pdf => Some(("pdftotext", "PDF component")),
         Format::Docx | Format::Html | Format::Md | Format::Epub => Some(("pandoc", "Pandoc")),
         _ => None,
     }
@@ -43,7 +43,11 @@ pub(super) async fn extract_text(
     if engines::resolve_tool(tool).is_none() {
         return Err(ConversionError::MissingDependency {
             tool: tool.into(),
-            install_hint: format!("Install {label} to extract text from this file"),
+            install_hint: if engines::is_bundled_tool(tool) {
+                format!("Reinstall ConvertKit to restore its {label}")
+            } else {
+                format!("Install {label} to extract text from this file")
+            },
         });
     }
 
@@ -228,7 +232,7 @@ mod tests {
 
     #[test]
     fn routes_pdf_to_poppler_and_documents_to_pandoc() {
-        assert_eq!(required_tool(Format::Pdf), Some(("pdftotext", "Poppler")));
+        assert_eq!(required_tool(Format::Pdf), Some(("pdftotext", "PDF component")));
         assert_eq!(required_tool(Format::Docx), Some(("pandoc", "Pandoc")));
         assert_eq!(required_tool(Format::Png), None);
     }

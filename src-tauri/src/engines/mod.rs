@@ -3,6 +3,8 @@ pub mod ffmpeg;
 pub mod image_pdf;
 pub mod imageio;
 pub mod imagemagick;
+pub mod pdf_compress;
+pub mod pdf_pages;
 pub mod libreoffice;
 pub mod pandoc;
 pub mod process;
@@ -23,6 +25,24 @@ use crate::formats::Format;
 /// Resolve CLI tools for both terminal-launched development builds and Finder
 /// or Spotlight-launched app bundles, whose inherited PATH is minimal.
 pub fn resolve_tool(name: &str) -> Option<PathBuf> {
+    if pdf_helper_command(name) {
+        if let Some(helper) = resolve_executable(PDF_HELPER) {
+            return Some(helper);
+        }
+    }
+    resolve_executable(name)
+}
+
+/// The bundled PDF helper answers these Poppler commands with the same
+/// arguments and output, so Poppler is only a fallback when the helper is
+/// missing from a development checkout.
+const PDF_HELPER: &str = "convertkit-pdf";
+
+fn pdf_helper_command(name: &str) -> bool {
+    matches!(name, "pdfinfo" | "pdftoppm" | "pdftotext")
+}
+
+fn resolve_executable(name: &str) -> Option<PathBuf> {
     let inherited = std::env::var_os("PATH").unwrap_or_default();
     let resolved = tool_search_directories(Some(inherited), std::env::current_exe().ok())
         .into_iter()
@@ -31,12 +51,18 @@ pub fn resolve_tool(name: &str) -> Option<PathBuf> {
     resolved.or_else(|| development_sidecar(name))
 }
 
-/// Executables that ship inside the app bundle.
+/// Executables that ship inside the app bundle, including the Poppler
+/// commands the bundled PDF helper answers.
 pub fn is_bundled_tool(name: &str) -> bool {
+    pdf_helper_command(name) || is_bundled_executable(name)
+}
+
+fn is_bundled_executable(name: &str) -> bool {
     matches!(
         name,
         "convertkit-image-pdf"
             | "convertkit-imageio"
+            | "convertkit-pdf"
             | "convertkit-vision-ocr"
             | "ffmpeg"
             | "ffprobe"
@@ -45,7 +71,7 @@ pub fn is_bundled_tool(name: &str) -> bool {
 }
 
 fn development_sidecar(name: &str) -> Option<PathBuf> {
-    if !is_bundled_tool(name) {
+    if !is_bundled_executable(name) {
         return None;
     }
     let target = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
@@ -91,6 +117,9 @@ fn tool_search_directories(
 pub fn tool_command(name: &str) -> tokio::process::Command {
     let executable = resolve_tool(name).unwrap_or_else(|| PathBuf::from(name));
     let mut command = tokio::process::Command::new(&executable);
+    if pdf_helper_command(name) && executable.file_name() != Some(std::ffi::OsStr::new(name)) {
+        command.arg(name);
+    }
     if name == "whisper-cli" {
         if let Some(backends) = bundled_whisper_backends(&executable) {
             command.current_dir(backends);

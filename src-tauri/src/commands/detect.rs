@@ -77,9 +77,6 @@ pub async fn check_dependencies() -> Vec<DependencyStatus> {
         ("tectonic", false),
         ("pdfinfo", false),
         ("pdftotext", false),
-        ("pdfseparate", false),
-        ("pdfunite", false),
-        ("gs", false),
         ("whisper-cli", false),
     ];
 

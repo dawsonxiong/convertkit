@@ -44,6 +44,7 @@ for packaged_binary in \
   "$APP_PATH/Contents/MacOS/convertkit-vision-ocr" \
   "$APP_PATH/Contents/MacOS/convertkit-image-pdf" \
   "$APP_PATH/Contents/MacOS/convertkit-imageio" \
+  "$APP_PATH/Contents/MacOS/convertkit-pdf" \
   "$APP_PATH/Contents/MacOS/ffmpeg" \
   "$APP_PATH/Contents/MacOS/ffprobe" \
   "$APP_PATH/Contents/MacOS/whisper-cli"

@@ -8,6 +8,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::engines::{pdf_compress, pdf_pages};
 use crate::engines::process::{capture_output, finish_output};
 use crate::engines::{self, tool_command, ConversionResult};
 use crate::error::ConversionError;
@@ -138,11 +139,13 @@ const PDF_TARGET_CANDIDATES: [PdfTargetCandidate; 10] = [
 ];
 
 impl PdfCompressionPreset {
-    fn ghostscript_setting(self) -> &'static str {
+    /// The same target resolutions as Ghostscript's /prepress, /ebook and
+    /// /screen presets, which ConvertKit used before compressing in process.
+    fn settings(self) -> pdf_compress::Settings {
         match self {
-            Self::High => "/prepress",
-            Self::Balanced => "/ebook",
-            Self::Smallest => "/screen",
+            Self::High => pdf_compress::Settings::HIGH,
+            Self::Balanced => pdf_compress::Settings::BALANCED,
+            Self::Smallest => pdf_compress::Settings::SMALLEST,
         }
     }
 }
@@ -154,8 +157,7 @@ pub async fn merge_pdfs(
     output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let inputs = validate_combine_inputs(&input_paths)?;
-    require_tool("pdfunite", "Install Poppler to combine files into a PDF")?;
-    require_tool("pdfinfo", "Install Poppler to verify the combined PDF")?;
+    require_tool("pdfinfo", "Reinstall ConvertKit to restore its PDF component")?;
     if inputs.iter().any(|input| is_combine_image(input)) {
         require_tool(
             "convertkit-image-pdf",
@@ -228,15 +230,10 @@ pub async fn split_pdf(
     output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let input = validate_pdf_input(&input_path)?;
-    require_tool("pdfinfo", "Install Poppler to inspect PDF pages")?;
-    require_tool("pdfseparate", "Install Poppler to split PDF files")?;
+    require_tool("pdfinfo", "Reinstall ConvertKit to restore its PDF component")?;
 
     let selected_pages = if mode == PdfSplitMode::Extract {
-        let pages = parse_page_selection(&page_selection)?;
-        if pages.len() > 1 {
-            require_tool("pdfunite", "Install Poppler to combine extracted PDF pages")?;
-        }
-        Some(pages)
+        Some(parse_page_selection(&page_selection)?)
     } else {
         None
     };
@@ -298,8 +295,8 @@ pub async fn export_pdf_pages(
     output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let input = validate_pdf_input(&input_path)?;
-    require_tool("pdfinfo", "Install Poppler to inspect PDF pages")?;
-    require_tool("pdftoppm", "Install Poppler to export PDF pages as images")?;
+    require_tool("pdfinfo", "Reinstall ConvertKit to restore its PDF component")?;
+    require_tool("pdftoppm", "Reinstall ConvertKit to restore its PDF component")?;
 
     let selected_pages = if mode == PdfSplitMode::Extract {
         Some(parse_page_selection(&page_selection)?)
@@ -432,8 +429,7 @@ pub async fn compress_pdf(
     output_options: Option<OutputOptions>,
 ) -> Result<ConversionResult, ConversionError> {
     let input = validate_pdf_input(&input_path)?;
-    require_tool("gs", "Install Ghostscript to compress PDF files")?;
-    require_tool("pdfinfo", "Install Poppler to verify PDF page layout")?;
+    require_tool("pdfinfo", "Reinstall ConvertKit to restore its PDF component")?;
 
     let source_size = std::fs::metadata(&input)
         .map_err(|_| ConversionError::InputNotFound {
@@ -473,13 +469,11 @@ pub async fn compress_pdf(
             .await?;
         }
         None => {
-            let arguments = ghostscript_arguments(&input, prepared_output.working_path(), preset);
-            run_pdf_tool(
-                "gs",
-                &arguments,
-                "PDF compression",
+            compress_in_process(
+                &input,
+                prepared_output.working_path(),
+                preset.settings(),
                 cancel_token.clone(),
-                COMPRESSION_TIMEOUT,
             )
             .await?;
 
@@ -588,13 +582,11 @@ async fn compress_pdf_to_target(
                 ),
             },
         );
-        let arguments = target_ghostscript_arguments(input, output, *candidate);
-        run_pdf_tool(
-            "gs",
-            &arguments,
-            "Target-size PDF compression",
+        compress_in_process(
+            input,
+            output,
+            pdf_compress::Settings::exact(candidate.resolution, candidate.jpeg_quality),
             cancel_token.clone(),
-            COMPRESSION_TIMEOUT,
         )
         .await?;
         let output_size = engines::verification::file_with_signature(output, b"%PDF-")?;
@@ -643,60 +635,30 @@ async fn verify_compressed_pdf_output(
     Ok(output_size)
 }
 
-fn ghostscript_arguments(
+async fn compress_in_process(
     input: &Path,
     output: &Path,
-    preset: PdfCompressionPreset,
-) -> Vec<OsString> {
-    let mut output_argument = OsString::from("-sOutputFile=");
-    output_argument.push(output.as_os_str());
-    vec![
-        OsString::from("-dSAFER"),
-        OsString::from("-dBATCH"),
-        OsString::from("-dNOPAUSE"),
-        OsString::from("-dQUIET"),
-        OsString::from("-sDEVICE=pdfwrite"),
-        OsString::from("-dCompatibilityLevel=1.7"),
-        OsString::from("-dDetectDuplicateImages=true"),
-        OsString::from("-dCompressFonts=true"),
-        OsString::from("-dSubsetFonts=true"),
-        OsString::from("-dAutoRotatePages=/None"),
-        OsString::from(format!("-dPDFSETTINGS={}", preset.ghostscript_setting())),
-        output_argument,
-        input.as_os_str().to_owned(),
-    ]
-}
-
-fn target_ghostscript_arguments(
-    input: &Path,
-    output: &Path,
-    candidate: PdfTargetCandidate,
-) -> Vec<OsString> {
-    let mut arguments = ghostscript_arguments(input, output, PdfCompressionPreset::Balanced);
-    let input_argument = arguments.pop().expect("Ghostscript input argument");
-    let output_argument = arguments.pop().expect("Ghostscript output argument");
-    arguments.extend([
-        OsString::from("-dAutoFilterColorImages=false"),
-        OsString::from("-dAutoFilterGrayImages=false"),
-        OsString::from("-dColorImageFilter=/DCTEncode"),
-        OsString::from("-dGrayImageFilter=/DCTEncode"),
-        OsString::from("-dDownsampleColorImages=true"),
-        OsString::from("-dDownsampleGrayImages=true"),
-        OsString::from("-dDownsampleMonoImages=true"),
-        OsString::from("-dColorImageDownsampleType=/Bicubic"),
-        OsString::from("-dGrayImageDownsampleType=/Bicubic"),
-        OsString::from("-dMonoImageDownsampleType=/Subsample"),
-        OsString::from(format!("-dColorImageResolution={}", candidate.resolution)),
-        OsString::from(format!("-dGrayImageResolution={}", candidate.resolution)),
-        OsString::from(format!(
-            "-dMonoImageResolution={}",
-            candidate.resolution.max(72)
-        )),
-        OsString::from(format!("-dJPEGQ={}", candidate.jpeg_quality)),
-        output_argument,
-        input_argument,
-    ]);
-    arguments
+    settings: pdf_compress::Settings,
+    cancel_token: CancellationToken,
+) -> Result<u64, ConversionError> {
+    let source = input.to_path_buf();
+    let target = output.to_path_buf();
+    let result = tokio::time::timeout(
+        COMPRESSION_TIMEOUT,
+        blocking_pdf(move || {
+            let mut document = pdf_pages::load(&source)?;
+            pdf_compress::compress(&mut document, settings, &cancel_token)?;
+            pdf_compress::save(&mut document, &target)
+        }),
+    )
+    .await
+    .unwrap_or(Err(ConversionError::Timeout {
+        seconds: COMPRESSION_TIMEOUT.as_secs(),
+    }));
+    if result.is_err() {
+        engines::cleanup_partial(output);
+    }
+    result
 }
 
 #[derive(Debug, Clone)]
@@ -990,22 +952,20 @@ async fn split_every_page(
         stderr: String::new(),
         exit_code: None,
     })?;
-    let pattern = temp.path().join("page-%d.pdf");
-    let arguments = vec![
-        OsString::from("-f"),
-        OsString::from("1"),
-        OsString::from("-l"),
-        OsString::from(page_count.to_string()),
-        input.as_os_str().to_owned(),
-        pattern.as_os_str().to_owned(),
-    ];
-    run_pdf_tool(
-        "pdfseparate",
-        &arguments,
-        "PDF split",
-        cancel_token.clone(),
-        SPLIT_TIMEOUT,
-    )
+    let source_path = input.to_path_buf();
+    let workspace = temp.path().to_path_buf();
+    let split_cancel = cancel_token.clone();
+    blocking_pdf(move || {
+        let source = pdf_pages::load(&source_path)?;
+        for page in 1..=page_count {
+            if split_cancel.is_cancelled() {
+                return Err(ConversionError::Cancelled);
+            }
+            let mut single = pdf_pages::extract(&source, &[page])?;
+            pdf_pages::save(&mut single, &workspace.join(format!("page-{page}.pdf")))?;
+        }
+        Ok(())
+    })
     .await?;
 
     let width = page_count.to_string().len().max(3);
@@ -1051,59 +1011,20 @@ async fn extract_pages(
             stage: format!("Extracting {} pages", pages.len()),
         },
     );
-    let temp = tempfile::tempdir().map_err(|error| ConversionError::ProcessFailed {
-        message: format!("Could not create temporary PDF workspace: {error}"),
-        stderr: String::new(),
-        exit_code: None,
-    })?;
-    let mut extracted = Vec::with_capacity(pages.len());
-    for (index, (start, end)) in contiguous_ranges(pages).into_iter().enumerate() {
-        let pattern = temp.path().join(format!("segment-{index}-%d.pdf"));
-        let arguments = vec![
-            OsString::from("-f"),
-            OsString::from(start.to_string()),
-            OsString::from("-l"),
-            OsString::from(end.to_string()),
-            input.as_os_str().to_owned(),
-            pattern.as_os_str().to_owned(),
-        ];
-        run_pdf_tool(
-            "pdfseparate",
-            &arguments,
-            "PDF page extraction",
-            cancel_token.clone(),
-            SPLIT_TIMEOUT,
-        )
-        .await?;
-        for page in start..=end {
-            extracted.push(temp.path().join(format!("segment-{index}-{page}.pdf")));
-        }
-    }
-
     let output = prepare_output(input, "pdf", "-pages", output_options)?;
-    if extracted.len() == 1 {
-        std::fs::copy(&extracted[0], output.working_path()).map_err(|error| {
-            ConversionError::ProcessFailed {
-                message: format!("Could not save the extracted PDF page: {error}"),
-                stderr: String::new(),
-                exit_code: None,
-            }
-        })?;
-    } else {
-        let mut arguments = extracted
-            .iter()
-            .map(|path| path.as_os_str().to_owned())
-            .collect::<Vec<_>>();
-        arguments.push(output.working_path().as_os_str().to_owned());
-        run_pdf_tool(
-            "pdfunite",
-            &arguments,
-            "PDF page extraction",
-            cancel_token,
-            SPLIT_TIMEOUT,
-        )
-        .await?;
-    }
+    let source_path = input.to_path_buf();
+    let selected = pages.to_vec();
+    let working = output.working_path().to_path_buf();
+    let extract_cancel = cancel_token.clone();
+    blocking_pdf(move || {
+        let source = pdf_pages::load(&source_path)?;
+        if extract_cancel.is_cancelled() {
+            return Err(ConversionError::Cancelled);
+        }
+        let mut extracted = pdf_pages::extract(&source, &selected)?;
+        pdf_pages::save(&mut extracted, &working)
+    })
+    .await?;
 
     let result = output.commit(ConversionResult {
         output_path: String::new(),
@@ -1120,26 +1041,6 @@ async fn extract_pages(
         duration_ms: 0,
         undo_manifest: None,
     })
-}
-
-fn contiguous_ranges(pages: &[u32]) -> Vec<(u32, u32)> {
-    let mut ranges = Vec::new();
-    let Some((&first, rest)) = pages.split_first() else {
-        return ranges;
-    };
-    let mut start = first;
-    let mut end = first;
-    for &page in rest {
-        if page == end + 1 {
-            end = page;
-        } else {
-            ranges.push((start, end));
-            start = page;
-            end = page;
-        }
-    }
-    ranges.push((start, end));
-    ranges
 }
 
 fn commit_split_outputs(
@@ -1350,66 +1251,27 @@ async fn run_pdf_merge(
     expected_pages: u32,
     cancel_token: CancellationToken,
 ) -> Result<ConversionResult, ConversionError> {
-    let mut command = tool_command("pdfunite");
-    command
-        .args(pdfunite_arguments(inputs, output))
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-
-    let mut child = command
-        .spawn()
-        .map_err(|error| ConversionError::ProcessFailed {
-            message: format!("Failed to start PDF merge: {error}"),
-            stderr: String::new(),
-            exit_code: None,
-        })?;
-    let stderr_task = capture_output(child.stderr.take());
-
-    enum ProcessExit {
-        Finished(std::process::ExitStatus),
-        Cancelled,
-        TimedOut,
-    }
-
-    let exit = tokio::select! {
-        result = child.wait() => ProcessExit::Finished(result.map_err(|error| {
-            ConversionError::ProcessFailed {
-                message: format!("PDF merge process failed: {error}"),
-                stderr: String::new(),
-                exit_code: None,
-            }
-        })?),
-        _ = cancel_token.cancelled() => ProcessExit::Cancelled,
-        _ = tokio::time::sleep(MERGE_TIMEOUT) => ProcessExit::TimedOut,
-    };
-
-    match exit {
-        ProcessExit::Cancelled => {
-            let _ = child.kill().await;
-            let _ = finish_output(stderr_task).await;
-            engines::cleanup_partial(output);
-            return Err(ConversionError::Cancelled);
-        }
-        ProcessExit::TimedOut => {
-            let _ = child.kill().await;
-            let _ = finish_output(stderr_task).await;
-            engines::cleanup_partial(output);
-            return Err(ConversionError::Timeout {
-                seconds: MERGE_TIMEOUT.as_secs(),
-            });
-        }
-        ProcessExit::Finished(status) => {
-            let stderr = finish_output(stderr_task).await;
-            if !status.success() {
-                engines::cleanup_partial(output);
-                return Err(ConversionError::ProcessFailed {
-                    message: "PDF merge failed".into(),
-                    stderr,
-                    exit_code: status.code(),
-                });
-            }
-        }
+    let sources = inputs.to_vec();
+    let target = output.to_path_buf();
+    let merge_cancel = cancel_token.clone();
+    let merged = tokio::time::timeout(
+        MERGE_TIMEOUT,
+        blocking_pdf(move || {
+            let documents = sources
+                .iter()
+                .map(|source| pdf_pages::load(source))
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut merged = pdf_pages::merge(&documents, &merge_cancel)?;
+            pdf_pages::save(&mut merged, &target)
+        }),
+    )
+    .await
+    .unwrap_or(Err(ConversionError::Timeout {
+        seconds: MERGE_TIMEOUT.as_secs(),
+    }));
+    if let Err(error) = merged {
+        engines::cleanup_partial(output);
+        return Err(error);
     }
 
     let output_size = engines::verification::file_with_signature(output, b"%PDF-")?;
@@ -1440,12 +1302,17 @@ async fn run_pdf_merge(
     })
 }
 
-fn pdfunite_arguments(inputs: &[PathBuf], output: &Path) -> Vec<PathBuf> {
-    inputs
-        .iter()
-        .cloned()
-        .chain(std::iter::once(output.to_path_buf()))
-        .collect()
+/// Run blocking lopdf work off the async runtime.
+async fn blocking_pdf<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, ConversionError> + Send + 'static,
+) -> Result<T, ConversionError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| ConversionError::ProcessFailed {
+            message: format!("PDF processing stopped unexpectedly: {error}"),
+            stderr: String::new(),
+            exit_code: None,
+        })?
 }
 
 #[cfg(test)]
@@ -1528,18 +1395,6 @@ mod tests {
     }
 
     #[test]
-    fn places_output_after_all_inputs() {
-        let inputs = vec![PathBuf::from("a.pdf"), PathBuf::from("b.pdf")];
-        assert_eq!(
-            pdfunite_arguments(&inputs, Path::new("merged.pdf")),
-            ["a.pdf", "b.pdf", "merged.pdf"]
-                .into_iter()
-                .map(PathBuf::from)
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
     fn split_rollback_only_removes_transaction_owned_outputs() {
         let directory = tempfile::tempdir().expect("tempdir");
         let input = directory.path().join("source.pdf");
@@ -1576,10 +1431,6 @@ mod tests {
             parse_page_selection("1-3, 7, 9-10").expect("selection"),
             vec![1, 2, 3, 7, 9, 10]
         );
-        assert_eq!(
-            contiguous_ranges(&[1, 2, 3, 7, 9, 10]),
-            vec![(1, 3), (7, 7), (9, 10)]
-        );
     }
 
     #[test]
@@ -1599,41 +1450,10 @@ mod tests {
     }
 
     #[test]
-    fn maps_compression_presets_to_ghostscript_settings() {
-        assert_eq!(
-            PdfCompressionPreset::High.ghostscript_setting(),
-            "/prepress"
-        );
-        assert_eq!(
-            PdfCompressionPreset::Balanced.ghostscript_setting(),
-            "/ebook"
-        );
-        assert_eq!(
-            PdfCompressionPreset::Smallest.ghostscript_setting(),
-            "/screen"
-        );
-    }
-
-    #[test]
-    fn builds_safe_ghostscript_compression_arguments() {
-        let arguments = ghostscript_arguments(
-            Path::new("source file.pdf"),
-            Path::new("output file.pdf"),
-            PdfCompressionPreset::Balanced,
-        );
-        let arguments = arguments
-            .iter()
-            .map(|argument| argument.to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
-
-        assert!(arguments.contains(&"-dSAFER".into()));
-        assert!(arguments.contains(&"-dAutoRotatePages=/None".into()));
-        assert!(arguments.contains(&"-dPDFSETTINGS=/ebook".into()));
-        assert!(arguments.contains(&"-sOutputFile=output file.pdf".into()));
-        assert_eq!(
-            arguments.last().map(String::as_str),
-            Some("source file.pdf")
-        );
+    fn maps_compression_presets_to_ghostscript_resolutions() {
+        assert_eq!(PdfCompressionPreset::High.settings().resolution, 300.0);
+        assert_eq!(PdfCompressionPreset::Balanced.settings().resolution, 150.0);
+        assert_eq!(PdfCompressionPreset::Smallest.settings().resolution, 72.0);
     }
 
     #[test]
@@ -1674,33 +1494,6 @@ mod tests {
             )
             .is_err());
         }
-    }
-
-    #[test]
-    fn builds_deterministic_target_size_arguments_after_the_base_preset() {
-        let arguments = target_ghostscript_arguments(
-            Path::new("source.pdf"),
-            Path::new("output.pdf"),
-            PDF_TARGET_CANDIDATES[3],
-        )
-        .into_iter()
-        .map(|argument| argument.to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-
-        let preset = arguments
-            .iter()
-            .position(|argument| argument == "-dPDFSETTINGS=/ebook")
-            .expect("base preset");
-        let resolution = arguments
-            .iter()
-            .position(|argument| argument == "-dColorImageResolution=170")
-            .expect("resolution override");
-        assert!(resolution > preset);
-        assert!(arguments.contains(&"-dJPEGQ=80".into()));
-        assert_eq!(
-            &arguments[arguments.len() - 2..],
-            ["-sOutputFile=output.pdf", "source.pdf"]
-        );
     }
 
     #[test]
