@@ -855,7 +855,7 @@ fn job_capability_with_app(app: Option<&AppHandle>, request: &JobRequest) -> Job
                     Vec::new(),
                 );
             }
-            tool_capability(input_path, "magick", "ImageMagick")
+            image_tool_capability(input_path)
         }
         JobRequest::Optimize {
             compression_goal,
@@ -886,7 +886,7 @@ fn job_capability_with_app(app: Option<&AppHandle>, request: &JobRequest) -> Job
                     Vec::new(),
                 );
             }
-            tool_capability(input_path, "magick", "ImageMagick")
+            image_tool_capability(input_path)
         }
         JobRequest::ExportImages { presets, .. } => {
             if input_format.category() != FileCategory::Image {
@@ -905,7 +905,7 @@ fn job_capability_with_app(app: Option<&AppHandle>, request: &JobRequest) -> Job
                     Vec::new(),
                 );
             }
-            tool_capability(input_path, "magick", "ImageMagick")
+            image_tool_capability(input_path)
         }
         JobRequest::RemoveMetadata { .. } => match super::metadata::metadata_removal_engine(path) {
             Some(super::metadata::MetadataRemovalEngine::BuiltInImage) => {
@@ -1452,6 +1452,26 @@ fn conversion_capability(
     )
 }
 
+/// Raster tools run on the bundled ImageIO helper. ImageMagick, when
+/// installed, only fills gaps such as animated WebP.
+fn image_tool_capability(input_path: &str) -> JobCapability {
+    if engines::resolve_tool(engines::imageio::HELPER).is_some() {
+        JobCapability::available(input_path, engines::imageio::HELPER)
+    } else {
+        tool_capability(input_path, "magick", "ImageMagick")
+    }
+}
+
+/// What to tell the user when `tool` is missing. Tools that ship inside the
+/// app can only be missing from a damaged install.
+fn missing_tool_message(tool: &str, label: &str) -> String {
+    if engines::is_bundled_tool(tool) {
+        format!("Reinstall ConvertKit to restore its bundled {label}.")
+    } else {
+        format!("Install {label} to use this tool.")
+    }
+}
+
 fn tool_capability(input_path: &str, tool: &str, label: &str) -> JobCapability {
     if engines::resolve_tool(tool).is_some() {
         JobCapability::available(input_path, tool)
@@ -1459,7 +1479,7 @@ fn tool_capability(input_path: &str, tool: &str, label: &str) -> JobCapability {
         JobCapability::unavailable(
             input_path,
             CapabilityIssue::MissingDependency,
-            format!("Install {label} to use this tool."),
+            missing_tool_message(tool, label),
             vec![tool.into()],
         )
     }
@@ -1477,10 +1497,17 @@ fn tools_capability(input_path: &str, tools: &[(&str, &str)]) -> JobCapability {
     if missing.is_empty() {
         JobCapability::available(input_path, label)
     } else {
+        let message = tools
+            .iter()
+            .find(|(tool, _)| missing.contains(tool))
+            .map_or_else(
+                || format!("Install {label} to use this tool."),
+                |(tool, label)| missing_tool_message(tool, label),
+            );
         JobCapability::unavailable(
             input_path,
             CapabilityIssue::MissingDependency,
-            format!("Install {label} to use this tool."),
+            message,
             missing.into_iter().map(str::to_string).collect(),
         )
     }

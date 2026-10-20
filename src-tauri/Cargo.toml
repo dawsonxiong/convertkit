@@ -37,3 +37,12 @@ plist = "1"
 lopdf = { version = "0.44", default-features = false }
 sevenz-rust2 = { version = "0.22.2", default-features = false, features = ["aes256", "bzip2", "compress", "ppmd"] }
 zeroize = "1"
+png = "0.18.1"
+webp = { version = "0.3.1", default-features = false }
+oxipng = { version = "10.2.1", default-features = false, features = ["parallel"] }
+libwebp-sys = "0.9.6"
+resvg = "0.48.1"
+mozjpeg = { version = "0.10.13", default-features = false, features = ["with_simd", "parallel"] }
+mozjpeg-sys = { version = "2.2.3", default-features = false, features = ["unwinding", "with_simd", "parallel"] }
+gif = "0.14.2"
+vtracer = "0.6.5"

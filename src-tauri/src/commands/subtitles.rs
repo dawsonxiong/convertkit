@@ -166,7 +166,7 @@ async fn probe_tracks(path: &Path) -> Result<Vec<SubtitleTrack>, ConversionError
     if resolve_tool("ffprobe").is_none() {
         return Err(ConversionError::MissingDependency {
             tool: "ffprobe".into(),
-            install_hint: "Install FFmpeg with Homebrew".into(),
+            install_hint: "Reinstall ConvertKit to restore its bundled FFmpeg".into(),
         });
     }
     let output = tokio::time::timeout(
@@ -330,7 +330,7 @@ pub(super) async fn extract_subtitles(
         if resolve_tool(tool).is_none() {
             return Err(ConversionError::MissingDependency {
                 tool: tool.into(),
-                install_hint: "Install FFmpeg with Homebrew".into(),
+                install_hint: "Reinstall ConvertKit to restore its bundled FFmpeg".into(),
             });
         }
     }

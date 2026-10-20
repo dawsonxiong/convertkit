@@ -34,10 +34,14 @@
     "externalBin": [
       "binaries/convertkit-vision-ocr",
       "binaries/convertkit-image-pdf",
+      "binaries/convertkit-imageio",
+      "binaries/ffmpeg",
+      "binaries/ffprobe",
       "binaries/whisper-cli"
     ],
     "resources": {
-      "runtime/whisper/": "whisper-runtime/"
+      "runtime/whisper/": "whisper-runtime/",
+      "runtime/ffmpeg/": "ffmpeg-runtime/"
     },
     "icon": ["icons/icon.icns"],
     "fileAssociations": [

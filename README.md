@@ -24,7 +24,7 @@ Results are saved as new files, so your originals stay as they were. You can pin
 
 ## How it works
 
-The React side builds a job and asks Rust over Tauri IPC whether the engines it needs are installed. Rust then runs it through FFmpeg, ImageMagick, Pandoc or whisper.cpp and streams progress back as events.
+The React side builds a job and asks Rust over Tauri IPC whether the engines it needs are installed. Rust then runs it through the bundled FFmpeg, the bundled ImageIO helper, Pandoc or whisper.cpp and streams progress back as events.
 
 If a conversion only changes the container, like MP4 to MOV with the same codecs, ffprobe spots that and the file gets remuxed instead of re-encoded, which is pretty much instant.
 
@@ -34,12 +34,21 @@ The formats in Convert come from `src/lib/formatMatrix.json`, and a backend test
 
 | Kind | Inputs | Outputs | Engine |
 | --- | --- | --- | --- |
-| Raster | JPEG, PNG, WebP, TIFF, BMP, GIF, ICO, AVIF, HEIC | Other rasters, SVG, or one-page PDF (PNG/JPEG) | ImageMagick, VTracer, bundled Quartz helper |
-| SVG | SVG | Raster formats | resvg, ImageMagick |
-| Video | MP4, MOV, WebM, MKV, AVI | Other video, GIF, or audio | FFmpeg |
-| Audio | MP3, WAV, AAC, FLAC, OGG, M4A | Other audio | FFmpeg |
+| Raster | JPEG, PNG, WebP, TIFF, BMP, GIF, ICO, AVIF, HEIC | Other rasters, SVG, or one-page PDF (PNG/JPEG) | Bundled ImageIO helper, vtracer (built in), bundled Quartz helper |
+| SVG | SVG | Raster formats | resvg (built in) |
+| Video | MP4, MOV, WebM, MKV, AVI | Other video, GIF, or audio | FFmpeg (bundled) |
+| Audio | MP3, WAV, AAC, FLAC, OGG, M4A | Other audio | FFmpeg (bundled) |
 | Documents | DOCX, HTML, Markdown, EPUB, TXT | Other documents, including PDF | Pandoc, LibreOffice, Tectonic |
 | PDF | PDF | Use the PDF tools, not Convert | Poppler, Ghostscript |
+
+Image, video, audio and transcription tools work without installing anything:
+
+- A bundled ImageIO helper decodes and resizes images and writes PNG, TIFF, BMP, GIF, AVIF and HEIC.
+- Linked-in libraries write JPEG (mozjpeg), WebP including animation (libwebp) and ICO, render SVG (resvg) and trace rasters to SVG (vtracer).
+- Optimize uses built-in lossless passes: oxipng for PNG, a coefficient transcode for JPEG (what jpegoptim does) and frame differencing for GIF (what gifsicle does).
+- FFmpeg ships inside the app, built from pinned sources with x264, x265, libvpx, opus, lame and vorbis (see License).
+
+ImageMagick is never required. It is only used, if installed, for AVIF or HEIC output on a macOS release whose ImageIO cannot encode them.
 
 If an engine is missing, you find out before the job starts. There's no PDF to DOCX.
 
@@ -52,13 +61,11 @@ Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whi
 You'll need an Apple Silicon Mac, Rust, Node 22 and pnpm, plus these engines:
 
 ```sh
-brew install ffmpeg imagemagick whisper-cpp pandoc resvg tectonic poppler ghostscript
-brew install oxipng jpegoptim gifsicle
+brew install pkg-config whisper-cpp pandoc tectonic poppler ghostscript
 brew install --cask libreoffice
-cargo install vtracer
 ```
 
-The packaged app comes with its own Whisper runtime. The Tiny, Base and Small models download the first time you use them.
+The packaged app comes with its own Whisper runtime and FFmpeg. `whisper-cpp` is only needed here so the build can stage it. The first `pnpm native:helpers` (run by every `pnpm tauri build`) compiles FFmpeg and its codecs from pinned, checksummed sources, which takes several minutes; later runs reuse the build. The Tiny, Base and Small models download the first time you use them.
 
 ```sh
 pnpm install
@@ -73,7 +80,7 @@ pnpm tauri dev
 | `pnpm check` | Type-check |
 | `pnpm lint` | Lint |
 | `pnpm format` | Format |
-| `pnpm native:helpers` | Build OCR/PDF helpers and stage Whisper |
+| `pnpm native:helpers` | Build the OCR, PDF and ImageIO helpers and FFmpeg, and stage Whisper |
 | `pnpm package:smoke:apple-silicon` | Ad-hoc arm64 package gate |
 | `pnpm release:doctor` | Check signing/notarize tooling |
 | `pnpm release:macos` | Sign, notarize, and staple the DMG |
@@ -100,6 +107,8 @@ export CONVERTKIT_APPLE_API_PRIVATE_KEY_REF='op://VAULT/ITEM/private key'
 
 Then `pnpm release:doctor`, `pnpm release:check`, and `pnpm release:macos`.
 
+The release also writes `ConvertKit_<version>_ffmpeg-source.tar.gz` next to the DMG. Publish it with every DMG: it is the GPL Corresponding Source for the bundled FFmpeg (the exact source tarballs and the script that built them). `sh scripts/package-ffmpeg-sources.sh` rebuilds it on its own.
+
 ## Shortcuts
 
 | Shortcut | Action |
@@ -116,4 +125,8 @@ Enter and Esc don't do anything while a form field or selector is focused.
 
 ## License
 
-MIT
+ConvertKit is MIT-licensed.
+
+The bundled FFmpeg is licensed under the GNU GPL, version 2 or later, because it includes x264 and x265. It runs as separate `ffmpeg` and `ffprobe` executables. Its licences and the versions of every component are in `ConvertKit.app/Contents/Resources/ffmpeg-runtime/` (`NOTICE.txt` and `licenses/`), and its source is published with each release as described under Release.
+
+H.264 and HEVC are covered by patent pools, and x264 and x265 come with no patent licence. That is a separate matter from the GPL, and worth checking before selling ConvertKit.
