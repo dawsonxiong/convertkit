@@ -66,6 +66,8 @@ fn is_bundled_executable(name: &str) -> bool {
             | "convertkit-vision-ocr"
             | "ffmpeg"
             | "ffprobe"
+            | "pandoc"
+            | "tectonic"
             | "whisper-cli"
     )
 }
@@ -418,6 +420,15 @@ mod tests {
         }
         assert!(get_engines(Format::Gif, Format::Pdf).is_empty());
         assert!(get_engines(Format::Svg, Format::Pdf).is_empty());
+    }
+
+    #[test]
+    fn docx_pdf_prefers_libreoffice_then_falls_back_to_pandoc() {
+        let tools = get_engines(Format::Docx, Format::Pdf)
+            .into_iter()
+            .map(|engine| engine.required_tool())
+            .collect::<Vec<_>>();
+        assert_eq!(tools, vec!["soffice", "pandoc"]);
     }
 
     #[test]

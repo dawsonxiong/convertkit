@@ -9,7 +9,7 @@
 #   src-tauri/ffmpeg-build/sources/                        the exact source tarballs
 #
 # The source tarballs plus this script are the Corresponding Source for the
-# GPL; scripts/package-ffmpeg-sources.sh archives them for each release.
+# GPL; scripts/package-third-party-sources.sh archives them for each release.
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -306,8 +306,9 @@ configuration=$("$binary_directory/ffmpeg-$target" -hide_banner -buildconf | tai
   echo "  libvorbis: configure no longer passes -force_cpusubtype_ALL to the linker."
   echo
   echo "Corresponding source: every release of ConvertKit is published together"
-  echo "with ConvertKit_<version>_ffmpeg-source.tar.gz, which holds the exact"
-  echo "tarballs above and scripts/build-ffmpeg.sh, the script that built them."
+  echo "with ConvertKit_<version>_third-party-source.tar.gz, which holds the"
+  echo "exact tarballs above and scripts/build-ffmpeg.sh, the script that built"
+  echo "them."
   echo
   echo "FFmpeg configuration:"
   echo "$configuration"

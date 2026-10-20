@@ -24,3 +24,52 @@ jobs:
       - run: pnpm check
       - run: pnpm lint
       - run: pnpm test
+
+  backend:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # tauri::generate_context! embeds the built frontend at compile time.
+      - run: pnpm build
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: brew install pkg-config
+      # FFmpeg and the document tools come from pinned, checksummed sources;
+      # the cache key changes whenever a pin or build step does.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            src-tauri/ffmpeg-build
+            src-tauri/third-party/sources
+          key: native-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh', 'scripts/stage-document-tools.sh') }}
+      - name: Build the bundled helpers, FFmpeg and document tools
+        run: |
+          sh scripts/build-vision-ocr.sh
+          sh scripts/build-image-pdf.sh
+          sh scripts/build-imageio.sh
+          sh scripts/build-pdf.sh
+          sh scripts/build-ffmpeg.sh
+          sh scripts/stage-document-tools.sh
+      # stage-whisper-runtime.sh copies an exactly pinned Homebrew whisper-cpp,
+      # which a hosted runner cannot guarantee. No test runs Whisper, so a stub
+      # satisfies the bundle configuration.
+      - name: Stub the Whisper sidecar
+        run: |
+          mkdir -p src-tauri/runtime/whisper
+          printf '#!/bin/sh\nexit 1\n' > src-tauri/binaries/whisper-cli-aarch64-apple-darwin
+          chmod 755 src-tauri/binaries/whisper-cli-aarch64-apple-darwin
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri

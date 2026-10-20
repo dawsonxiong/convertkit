@@ -8,6 +8,8 @@ src-tauri/binaries/
 src-tauri/runtime/whisper/
 src-tauri/runtime/ffmpeg/
 src-tauri/ffmpeg-build/
+src-tauri/runtime/documents/
+src-tauri/third-party/
 src-tauri/gen/
 
 # Environment

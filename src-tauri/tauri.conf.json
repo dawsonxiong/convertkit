@@ -38,11 +38,14 @@
       "binaries/convertkit-pdf",
       "binaries/ffmpeg",
       "binaries/ffprobe",
+      "binaries/pandoc",
+      "binaries/tectonic",
       "binaries/whisper-cli"
     ],
     "resources": {
       "runtime/whisper/": "whisper-runtime/",
-      "runtime/ffmpeg/": "ffmpeg-runtime/"
+      "runtime/ffmpeg/": "ffmpeg-runtime/",
+      "runtime/documents/": "document-runtime/"
     },
     "icon": ["icons/icon.icns"],
     "fileAssociations": [

@@ -47,6 +47,8 @@ for packaged_binary in \
   "$APP_PATH/Contents/MacOS/convertkit-pdf" \
   "$APP_PATH/Contents/MacOS/ffmpeg" \
   "$APP_PATH/Contents/MacOS/ffprobe" \
+  "$APP_PATH/Contents/MacOS/pandoc" \
+  "$APP_PATH/Contents/MacOS/tectonic" \
   "$APP_PATH/Contents/MacOS/whisper-cli"
 do
   [ -x "$packaged_binary" ] || fail "missing packaged executable: $packaged_binary"
@@ -72,6 +74,18 @@ done
 if "$APP_PATH/Contents/MacOS/ffmpeg" -hide_banner -buildconf | grep -Eq -- '--enable-(version3|nonfree)'; then
   fail "the bundled FFmpeg must stay GPLv2-or-later and redistributable"
 fi
+
+printf 'Verifying the bundled document tools and their notices...\n'
+document_runtime="$APP_PATH/Contents/Resources/document-runtime"
+[ -f "$document_runtime/NOTICE.txt" ] || fail "the document tools NOTICE is missing"
+[ -f "$document_runtime/licenses/pandoc-COPYING.md" ] || fail "the Pandoc licence is missing"
+[ -f "$document_runtime/licenses/tectonic-LICENSE.txt" ] || fail "the Tectonic licence is missing"
+for document_tool in pandoc tectonic; do
+  if otool -L "$APP_PATH/Contents/MacOS/$document_tool" | tail -n +2 | awk '{ print $1 }' |
+    grep -Ev '^(/System/|/usr/lib/)' >/dev/null; then
+    fail "$document_tool links a library outside macOS"
+  fi
+done
 
 # This is a package-integrity gate, not the credentialed release signature.
 # Re-signing ad hoc makes the local contract deterministic even if a developer
