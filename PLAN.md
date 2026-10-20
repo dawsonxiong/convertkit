@@ -301,10 +301,10 @@ and resumable recent work without duplicating each tool's controls.
   dimensions, codecs, and durations with no output audio; a cancelled 557 MB job left no
   output, hidden partial, or child process.
 - Local transcription with separately verified Tiny, Base, and Small models plus a pinned
-  Apple Silicon runtime bundled inside the app. The staging gate verifies whisper.cpp 1.9.2,
-  GGML 0.22.0, OpenMP 22.1.8, the complete CPU/Metal/BLAS backend set, matching arm64
-  architecture, and upstream license files before rewriting every native load path. A
-  clean-environment audit loaded only bundle-contained code, and a typed packaged-app job
+  Apple Silicon runtime bundled inside the app. `scripts/build-whisper.sh` builds whisper.cpp
+  1.9.2 from its checksummed release as one static arm64 `whisper-cli` with the CPU, Metal
+  and Accelerate BLAS backends built in and no OpenMP, verifies it links only macOS, and
+  ships the upstream licence and a NOTICE. A clean-environment audit loaded only bundle-contained code, and a typed packaged-app job
   produced the expected transcript with an unchanged source hash and no surviving child.
 - General batch metadata removal for JPEG, PNG, WebP, PDF, audio, and video, with recursive
   folder input, retained tab state, shared output controls, progress, recent history, and
@@ -729,8 +729,8 @@ Destructive actions require previews, explicit confirmation, and a recoverable p
 
 - [x] FFmpeg preprocessing to 16-bit mono 16 kHz WAV.
 - [x] Resolve a locally installed `whisper-cli` with exact capability feedback.
-- [x] Bundle and load-audit a pinned, licensed arm64 Whisper/GGML/OpenMP runtime, with all
-      native dependencies and backends resolved inside the signed app bundle.
+- [x] Build and bundle a pinned, licensed, static arm64 whisper-cli from source, with its
+      GGML backends built in and only macOS system libraries linked.
 - [x] Manage separately downloaded, size- and SHA-1-verified Tiny, Base, and Small models.
 - [x] Language auto-detection plus explicit selection.
 - [x] TXT, SRT, and VTT output.
