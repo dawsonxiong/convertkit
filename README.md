@@ -66,13 +66,13 @@ Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whi
 You'll need an Apple Silicon Mac, Rust, Node 22 and pnpm, plus these:
 
 ```sh
-brew install pkg-config whisper-cpp
+brew install pkg-config
 brew install --cask libreoffice   # optional, for layout-faithful DOCX to PDF
 ```
 
 The package smoke tests (`pnpm package:smoke:apple-silicon`) also build their fixtures with `ffmpeg`, `imagemagick`, `poppler` and `ghostscript`. The app itself does not use them.
 
-The packaged app comes with its own Whisper runtime, FFmpeg, Pandoc and Tectonic. `whisper-cpp` is only needed here so the build can stage it. The first `pnpm native:helpers` (run by every `pnpm tauri build`) compiles FFmpeg and its codecs from pinned, checksummed sources, which takes several minutes; later runs reuse the build. The Tiny, Base and Small models download the first time you use them.
+The packaged app comes with its own Whisper runtime, FFmpeg, Pandoc and Tectonic. The first `pnpm native:helpers` (run by every `pnpm tauri build`) compiles FFmpeg, its codecs and whisper.cpp from pinned, checksummed sources, which takes several minutes; later runs reuse the build. The Tiny, Base and Small models download the first time you use them.
 
 ```sh
 pnpm install
@@ -87,7 +87,7 @@ pnpm tauri dev
 | `pnpm check` | Type-check |
 | `pnpm lint` | Lint |
 | `pnpm format` | Format |
-| `pnpm native:helpers` | Build the OCR, PDF and ImageIO helpers and FFmpeg, and stage Whisper |
+| `pnpm native:helpers` | Build the OCR, PDF and ImageIO helpers, FFmpeg and Whisper |
 | `pnpm package:smoke:apple-silicon` | Ad-hoc arm64 package gate |
 | `pnpm release:doctor` | Check signing/notarize tooling |
 | `pnpm release:macos` | Sign, notarize, and staple the DMG |

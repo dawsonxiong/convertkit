@@ -123,23 +123,24 @@ pub fn tool_command(name: &str) -> tokio::process::Command {
         command.arg(name);
     }
     if name == "whisper-cli" {
-        if let Some(backends) = bundled_whisper_backends(&executable) {
-            command.current_dir(backends);
+        // The bundled whisper-cli has its backends built in, but GGML still scans
+        // the working directory and GGML_BACKEND_PATH for plug-ins. Start it in its
+        // own runtime folder, which holds none, so nothing else gets loaded.
+        if let Some(runtime) = bundled_whisper_runtime(&executable) {
+            command.current_dir(runtime);
             command.env_remove("GGML_BACKEND_PATH");
         }
     }
     command
 }
 
-fn bundled_whisper_backends(executable: &Path) -> Option<PathBuf> {
+fn bundled_whisper_runtime(executable: &Path) -> Option<PathBuf> {
     let macos_directory = executable.parent()?;
     if macos_directory.file_name()?.to_str()? != "MacOS" {
         return None;
     }
-    let backends = macos_directory
-        .parent()?
-        .join("Resources/whisper-runtime/backends");
-    backends.is_dir().then_some(backends)
+    let runtime = macos_directory.parent()?.join("Resources/whisper-runtime");
+    runtime.is_dir().then_some(runtime)
 }
 
 // ---------------------------------------------------------------------------
@@ -363,21 +364,21 @@ mod tests {
     }
 
     #[test]
-    fn whisper_backend_path_is_limited_to_a_real_app_bundle() {
+    fn whisper_runtime_path_is_limited_to_a_real_app_bundle() {
         let fixture = tempfile::tempdir().expect("temporary bundle");
         let macos = fixture.path().join("ConvertKit.app/Contents/MacOS");
-        let backends = fixture
+        let runtime = fixture
             .path()
-            .join("ConvertKit.app/Contents/Resources/whisper-runtime/backends");
+            .join("ConvertKit.app/Contents/Resources/whisper-runtime");
         std::fs::create_dir_all(&macos).expect("MacOS directory");
-        std::fs::create_dir_all(&backends).expect("backend directory");
+        std::fs::create_dir_all(&runtime).expect("runtime directory");
 
         assert_eq!(
-            bundled_whisper_backends(&macos.join("whisper-cli")),
-            Some(backends)
+            bundled_whisper_runtime(&macos.join("whisper-cli")),
+            Some(runtime)
         );
         assert_eq!(
-            bundled_whisper_backends(Path::new("/usr/local/bin/whisper-cli")),
+            bundled_whisper_runtime(Path::new("/usr/local/bin/whisper-cli")),
             None
         );
     }

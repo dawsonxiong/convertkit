@@ -33,7 +33,6 @@ main_binary="$contents/MacOS/convertkit"
 vision_binary="$contents/MacOS/convertkit-vision-ocr"
 whisper_binary="$contents/MacOS/whisper-cli"
 runtime_directory="$contents/Resources/whisper-runtime"
-backend_directory="$runtime_directory/backends"
 manifest="$runtime_directory/runtime-manifest.json"
 
 for required_path in \
@@ -41,10 +40,8 @@ for required_path in \
   "$vision_binary" \
   "$whisper_binary" \
   "$manifest" \
-  "$runtime_directory/libwhisper.1.dylib" \
-  "$runtime_directory/libggml.0.dylib" \
-  "$runtime_directory/libggml-base.0.dylib" \
-  "$runtime_directory/libomp.dylib"
+  "$runtime_directory/NOTICE.txt" \
+  "$runtime_directory/licenses/whisper.cpp-LICENSE.txt"
 do
   [ -f "$required_path" ] || {
     echo "The packaged app is missing: $required_path" >&2
@@ -54,6 +51,10 @@ done
 
 grep -Fq "\"target\": \"$target\"" "$manifest" || {
   echo "The runtime manifest does not match $target" >&2
+  exit 1
+}
+grep -Fq '"backends": "static"' "$manifest" || {
+  echo "The runtime manifest does not describe the static Whisper build" >&2
   exit 1
 }
 
@@ -69,41 +70,30 @@ require_architecture() {
   esac
 }
 
-verify_dependencies() {
-  runtime_file=$1
-  otool -L "$runtime_file" | tail -n +2 | awk '{ print $1 }' | while IFS= read -r dependency; do
-    case "$dependency" in
-      /System/*|/usr/lib/*|@loader_path/*|@executable_path/*) ;;
-      *)
-        echo "$runtime_file retains a non-system dependency: $dependency" >&2
-        exit 1
-        ;;
-    esac
-  done
-}
-
 for packaged_binary in "$main_binary" "$vision_binary" "$whisper_binary"; do
   require_architecture "$packaged_binary"
 done
 
-backend_count=0
-for runtime_file in "$whisper_binary" "$runtime_directory"/*.dylib "$backend_directory"/*.so; do
-  [ -f "$runtime_file" ] || continue
-  require_architecture "$runtime_file"
-  verify_dependencies "$runtime_file"
-  case "$runtime_file" in "$backend_directory"/*.so) backend_count=$((backend_count + 1)) ;; esac
+# The backends are built into whisper-cli, so it links only macOS itself and
+# its runtime folder holds no libraries or plug-ins for GGML to load.
+otool -L "$whisper_binary" | tail -n +2 | awk '{ print $1 }' | while IFS= read -r dependency; do
+  case "$dependency" in
+    /System/*|/usr/lib/*) ;;
+    *)
+      echo "$whisper_binary links a library outside macOS: $dependency" >&2
+      exit 1
+      ;;
+  esac
 done
-[ "$backend_count" -gt 0 ] || {
-  echo "The packaged Whisper runtime has no loadable backends" >&2
-  exit 1
-}
-grep -Fq "\"backendCount\": $backend_count" "$manifest" || {
-  echo "The runtime manifest backend count does not match the app bundle" >&2
-  exit 1
-}
+for unexpected in "$runtime_directory"/*.dylib "$runtime_directory"/*.so "$runtime_directory"/backends; do
+  [ ! -e "$unexpected" ] || {
+    echo "The packaged Whisper runtime still ships a loadable library: $unexpected" >&2
+    exit 1
+  }
+done
 
 if [ "$verify_only" -eq 1 ]; then
-  echo "Verified packaged $target Whisper runtime with $backend_count backends."
+  echo "Verified packaged $target Whisper runtime."
   exit 0
 fi
 
@@ -170,7 +160,7 @@ ffmpeg \
   "$wave_path"
 
 (
-  cd "$backend_directory"
+  cd "$runtime_directory"
   "$whisper_binary" \
     -m "$model_path" \
     -f "$wave_path" \
