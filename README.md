@@ -39,18 +39,19 @@ The formats in Convert come from `src/lib/formatMatrix.json`, and a backend test
 | Video | MP4, MOV, WebM, MKV, AVI | Other video, GIF, or audio | FFmpeg (bundled) |
 | Audio | MP3, WAV, AAC, FLAC, OGG, M4A | Other audio | FFmpeg (bundled) |
 | Documents | DOCX, HTML, Markdown, EPUB, TXT | Other documents, including PDF | Pandoc, LibreOffice, Tectonic |
-| PDF | PDF | Use the PDF tools, not Convert | Poppler, Ghostscript |
+| PDF | PDF | Use the PDF tools, not Convert | Bundled PDFKit helper, lopdf (built in) |
 
-Image, video, audio and transcription tools work without installing anything:
+Image, video, audio, transcription and PDF tools work without installing anything:
 
 - A bundled ImageIO helper decodes and resizes images and writes PNG, TIFF, BMP, GIF, AVIF and HEIC.
 - Linked-in libraries write JPEG (mozjpeg), WebP including animation (libwebp) and ICO, render SVG (resvg) and trace rasters to SVG (vtracer).
 - Optimize uses built-in lossless passes: oxipng for PNG, a coefficient transcode for JPEG (what jpegoptim does) and frame differencing for GIF (what gifsicle does).
 - FFmpeg ships inside the app, built from pinned sources with x264, x265, libvpx, opus, lame and vorbis (see License).
+- A bundled PDFKit helper reads page info, renders pages and extracts text. Split, extract and combine copy pages losslessly with lopdf, and Compress PDF downsamples images to 300, 150 or 72 ppi and re-encodes them with mozjpeg.
 
 ImageMagick is never required. It is only used, if installed, for AVIF or HEIC output on a macOS release whose ImageIO cannot encode them.
 
-If an engine is missing, you find out before the job starts. There's no PDF to DOCX.
+Document conversion still uses Pandoc, Tectonic and LibreOffice. If an engine is missing, you find out before the job starts. There's no PDF to DOCX.
 
 ## Stack
 
@@ -58,12 +59,14 @@ Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whi
 
 ## Running locally
 
-You'll need an Apple Silicon Mac, Rust, Node 22 and pnpm, plus these engines:
+You'll need an Apple Silicon Mac, Rust, Node 22 and pnpm, plus these:
 
 ```sh
-brew install pkg-config whisper-cpp pandoc tectonic poppler ghostscript
+brew install pkg-config whisper-cpp pandoc tectonic
 brew install --cask libreoffice
 ```
+
+The package smoke tests (`pnpm package:smoke:apple-silicon`) also build their fixtures with `ffmpeg`, `imagemagick`, `poppler` and `ghostscript`. The app itself does not use them.
 
 The packaged app comes with its own Whisper runtime and FFmpeg. `whisper-cpp` is only needed here so the build can stage it. The first `pnpm native:helpers` (run by every `pnpm tauri build`) compiles FFmpeg and its codecs from pinned, checksummed sources, which takes several minutes; later runs reuse the build. The Tiny, Base and Small models download the first time you use them.
 
