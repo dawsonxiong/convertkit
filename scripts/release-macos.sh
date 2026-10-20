@@ -29,7 +29,7 @@ require_command() {
   fi
 }
 
-for command_name in op pnpm security codesign xcrun spctl; do
+for command_name in op pnpm security codesign xcrun spctl node shasum; do
   require_command "$command_name"
 done
 
@@ -159,9 +159,27 @@ xcrun stapler validate "$dmg_path"
 spctl --assess --type execute --verbose=2 "$app_path"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
 
-# The bundled FFmpeg and Pandoc are GPL: publish their Corresponding Source
-# with the DMG.
-third_party_source_archive=$(sh "$project_dir/scripts/package-third-party-sources.sh" "$(dirname "$dmg_path")")
+case "$dmg_path" in
+  *_aarch64.dmg) ;;
+  *)
+    echo "Expected an Apple Silicon DMG, got: $dmg_path" >&2
+    exit 1
+    ;;
+esac
+
+# Stage exactly what gets uploaded, under the names the release uses. The
+# README links to releases/latest/download/ConvertKit_aarch64.dmg, so the DMG
+# drops its version. The bundled FFmpeg and Pandoc are GPL: their
+# Corresponding Source goes up with every release that ships the DMG.
+version=$(node -p "require('$project_dir/src-tauri/tauri.conf.json').version")
+upload_dir="$project_dir/src-tauri/target/release/upload/$version"
+rm -rf "$upload_dir"
+mkdir -p "$upload_dir"
+cp "$dmg_path" "$upload_dir/ConvertKit_aarch64.dmg"
+xcrun stapler validate "$upload_dir/ConvertKit_aarch64.dmg"
+third_party_source_archive=$(sh "$project_dir/scripts/package-third-party-sources.sh" "$upload_dir")
 
 echo "Verified notarized release: $dmg_path"
-echo "Publish alongside it (GPL Corresponding Source): $third_party_source_archive"
+echo "Upload these files to the v$version release:"
+(cd "$upload_dir" && shasum -a 256 ConvertKit_aarch64.dmg "$(basename "$third_party_source_archive")")
+echo "Folder: $upload_dir"

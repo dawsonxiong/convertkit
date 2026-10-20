@@ -101,7 +101,7 @@ pnpm tauri dev --no-watch --config \
 
 ## Release
 
-Output: `src-tauri/target/release/bundle/dmg/ConvertKit_<version>_<arch>.dmg`
+Output: `src-tauri/target/release/bundle/dmg/ConvertKit_<version>_<arch>.dmg`, plus an upload folder, `src-tauri/target/release/upload/<version>/`, holding exactly the release assets under their published names.
 
 Signing credentials come from 1Password. Export the `op://` references rather than the keys themselves:
 
@@ -114,7 +114,7 @@ export CONVERTKIT_APPLE_API_PRIVATE_KEY_REF='op://VAULT/ITEM/private key'
 
 Then `pnpm release:doctor`, `pnpm release:check`, and `pnpm release:macos`.
 
-The release also writes `ConvertKit_<version>_third-party-source.tar.gz` next to the DMG. Publish it with every DMG: it is the GPL Corresponding Source for the bundled FFmpeg (the exact source tarballs and the script that built them) and Pandoc (its source at the shipped tag). `sh scripts/package-third-party-sources.sh` rebuilds it on its own.
+The upload folder holds `ConvertKit_aarch64.dmg` (the notarized DMG without its version, so the download link above always points at the latest release) and `ConvertKit_<version>_third-party-source.tar.gz`. Attach both to the GitHub release. Publish the source archive with every DMG: it is the GPL Corresponding Source for the bundled FFmpeg (the exact source tarballs and the script that built them) and Pandoc (its source at the shipped tag). `sh scripts/package-third-party-sources.sh` rebuilds it on its own.
 
 ## Shortcuts
 
