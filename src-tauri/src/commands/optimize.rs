@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -25,6 +26,8 @@ const OPTIMIZE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 pub(super) const MIN_IMAGE_TARGET_BYTES: u64 = 16 * 1024;
 pub(super) const MAX_IMAGE_TARGET_BYTES: u64 = 100 * 1024 * 1024;
 const TARGET_QUALITY_CANDIDATES: [u8; 14] = [95, 90, 85, 80, 75, 70, 60, 50, 40, 30, 20, 10, 5, 1];
+/// Most encodes a binary search over [`TARGET_QUALITY_CANDIDATES`] needs.
+const TARGET_SEARCH_STEPS: usize = 4;
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -266,41 +269,64 @@ async fn run_target_optimization(
             exit_code: None,
         })?;
     let extension = expected_format.extension();
+    // JPEG and WebP candidates are encoded in process from one decode.
+    let prepared = if with_helper {
+        imageio::prepare(
+            input,
+            expected_format,
+            &target_candidate_options(expected_format, 100, keep_metadata),
+            &cancel_token,
+        )
+        .await?
+        .map(Arc::new)
+    } else {
+        None
+    };
     let mut smallest_bytes = None;
     let mut first_failure = None;
+    let mut fitting = None;
 
-    for (index, quality) in TARGET_QUALITY_CANDIDATES.iter().copied().enumerate() {
+    // File size falls as quality falls, so a binary search over the
+    // candidates finds the highest quality that fits in at most four encodes
+    // instead of up to fourteen.
+    let (mut low, mut high) = (0, TARGET_QUALITY_CANDIDATES.len());
+    let mut attempt_number = 0;
+    while low < high {
         if cancel_token.is_cancelled() {
             engines::cleanup_partial(output);
             return Err(ConversionError::Cancelled);
         }
+        let index = (low + high) / 2;
+        let quality = TARGET_QUALITY_CANDIDATES[index];
+        attempt_number += 1;
         let candidate = temp.path().join(format!("candidate-{index}.{extension}"));
         if let Some(app) = app {
             let _ = app.emit(
                 "conversion-progress",
                 ProgressPayload {
                     job_id: job_id.to_owned(),
-                    percent: 5 + ((index * 85) / TARGET_QUALITY_CANDIDATES.len()) as i32,
-                    stage: format!(
-                        "Trying image size {} of {}",
-                        index + 1,
-                        TARGET_QUALITY_CANDIDATES.len()
-                    ),
+                    percent: 5 + (attempt_number * 85 / TARGET_SEARCH_STEPS).min(85) as i32,
+                    stage: format!("Trying image size {attempt_number} of {TARGET_SEARCH_STEPS}"),
                 },
             );
         }
 
-        let attempt = match run_target_candidate(
-            input,
-            &candidate,
-            expected_format,
-            quality,
-            keep_metadata,
-            with_helper,
-            cancel_token.clone(),
-        )
-        .await
-        {
+        let rendered = match &prepared {
+            Some(prepared) => write_prepared_candidate(prepared, quality, &candidate).await,
+            None => {
+                run_target_candidate(
+                    input,
+                    &candidate,
+                    expected_format,
+                    quality,
+                    keep_metadata,
+                    with_helper,
+                    cancel_token.clone(),
+                )
+                .await
+            }
+        };
+        let attempt = match rendered {
             Ok(()) => {
                 verify_candidate(
                     &candidate,
@@ -313,21 +339,29 @@ async fn run_target_optimization(
             }
             Err(error) => Err(error),
         };
-        let verified = match attempt {
-            Ok(candidate) => candidate,
+        match attempt {
+            Ok(verified) => {
+                smallest_bytes =
+                    Some(smallest_bytes.map_or(verified.size, |size: u64| size.min(verified.size)));
+                if verified.size <= target_size {
+                    fitting = Some(verified);
+                    high = index;
+                } else {
+                    low = index + 1;
+                }
+            }
             Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
             Err(error) => {
+                // A candidate that cannot be written counts as too large, so
+                // the search moves on to lower qualities.
                 first_failure.get_or_insert(error);
                 engines::cleanup_partial(&candidate);
-                continue;
+                low = index + 1;
             }
-        };
-
-        smallest_bytes =
-            Some(smallest_bytes.map_or(verified.size, |size: u64| size.min(verified.size)));
-        if verified.size > target_size {
-            continue;
         }
+    }
+
+    if let Some(verified) = fitting {
         if cancel_token.is_cancelled() {
             return Err(ConversionError::Cancelled);
         }
@@ -366,6 +400,26 @@ async fn run_target_optimization(
     Err(ConversionError::TargetSizeUnreachable {
         target_bytes: target_size,
         smallest_bytes,
+    })
+}
+
+async fn write_prepared_candidate(
+    prepared: &Arc<imageio::PreparedImage>,
+    quality: u8,
+    output: &Path,
+) -> Result<(), ConversionError> {
+    let prepared = Arc::clone(prepared);
+    let encoded = tokio::task::spawn_blocking(move || prepared.encode(Some(quality)))
+        .await
+        .map_err(|error| ConversionError::ProcessFailed {
+            message: format!("The image encoder stopped unexpectedly: {error}"),
+            stderr: String::new(),
+            exit_code: None,
+        })??;
+    std::fs::write(output, encoded).map_err(|error| ConversionError::ProcessFailed {
+        message: format!("Could not save a target-size candidate: {error}"),
+        stderr: String::new(),
+        exit_code: None,
     })
 }
 
@@ -443,88 +497,77 @@ async fn run_optimization(
         exit_code: None,
     })?;
 
-    // The source is the baseline candidate. Only a verified, strictly smaller
-    // derivative is allowed to displace it.
-    let mut best: Option<VerifiedCandidate> = None;
+    // Every candidate writes its own file, so they render concurrently; the
+    // JPEG re-encode and its lossless transcode, for example, overlap.
     let strategy_count = if with_helper {
         helper_strategies(expected_format, keep_metadata).len()
     } else {
         optimization_strategies(&extension).len()
     };
-
-    for index in 0..strategy_count {
+    let strategy_candidates = (0..strategy_count).map(|index| {
         let candidate = temp.path().join(format!("candidate-{index}.{extension}"));
-        let rendered = if with_helper {
-            let options = &helper_strategies(expected_format, keep_metadata)[index];
-            imageio::convert(
-                input,
-                &candidate,
-                expected_format,
-                options,
-                cancel_token.clone(),
-            )
-            .await
-        } else {
-            run_candidate(
-                input,
-                &candidate,
-                &optimization_strategies(&extension)[index],
-                keep_metadata,
-                cancel_token.clone(),
-            )
-            .await
-        };
-        match rendered {
-            Ok(()) => {
-                match verify_candidate(
+        let cancel_token = cancel_token.clone();
+        let extension = &extension;
+        async move {
+            let rendered = if with_helper {
+                let options = &helper_strategies(expected_format, keep_metadata)[index];
+                imageio::convert(input, &candidate, expected_format, options, cancel_token).await
+            } else {
+                run_candidate(
+                    input,
                     &candidate,
-                    &source_structure,
-                    expected_format,
-                    with_helper,
-                    cancel_token.clone(),
+                    &optimization_strategies(extension)[index],
+                    keep_metadata,
+                    cancel_token,
                 )
                 .await
-                {
-                    Ok(candidate) => consider_candidate(&mut best, candidate, source_size),
-                    Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
-                    Err(_) => engines::cleanup_partial(&candidate),
-                }
-            }
-            Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
-            Err(_) => {}
+            };
+            rendered.map(|()| Some(candidate))
         }
-    }
-
+    });
     let specialized = temp
         .path()
         .join(format!("candidate-specialized.{extension}"));
-    match run_specialized_candidate(
-        input,
-        &specialized,
-        &extension,
-        keep_metadata,
-        cancel_token.clone(),
-    )
-    .await
-    {
-        Ok(true) => {
-            match verify_candidate(
-                &specialized,
-                &source_structure,
-                expected_format,
-                with_helper,
-                cancel_token,
-            )
-            .await
-            {
-                Ok(candidate) => consider_candidate(&mut best, candidate, source_size),
-                Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
-                Err(_) => engines::cleanup_partial(&specialized),
-            }
+    let specialized_candidate = async {
+        run_specialized_candidate(
+            input,
+            &specialized,
+            &extension,
+            keep_metadata,
+            cancel_token.clone(),
+        )
+        .await
+        .map(|written| written.then(|| specialized.clone()))
+    };
+    let (mut rendered, specialized_rendered) = tokio::join!(
+        futures_util::future::join_all(strategy_candidates),
+        specialized_candidate
+    );
+    rendered.push(specialized_rendered);
+
+    // The source is the baseline candidate. Only a verified, strictly smaller
+    // derivative is allowed to displace it.
+    let mut best: Option<VerifiedCandidate> = None;
+    for candidate in rendered {
+        let candidate = match candidate {
+            Ok(Some(candidate)) => candidate,
+            Ok(None) => continue,
+            Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
+            Err(_) => continue,
+        };
+        match verify_candidate(
+            &candidate,
+            &source_structure,
+            expected_format,
+            with_helper,
+            cancel_token.clone(),
+        )
+        .await
+        {
+            Ok(candidate) => consider_candidate(&mut best, candidate, source_size),
+            Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
+            Err(_) => engines::cleanup_partial(&candidate),
         }
-        Ok(false) => {}
-        Err(ConversionError::Cancelled) => return Err(ConversionError::Cancelled),
-        Err(_) => {}
     }
 
     let Some(best) = best else {
@@ -1158,6 +1201,69 @@ mod tests {
             std::fs::metadata(&source).expect("preserved source").len(),
             source_size
         );
+    }
+
+    #[tokio::test]
+    async fn target_search_picks_the_highest_quality_that_fits() {
+        if engines::resolve_tool(imageio::HELPER).is_none() {
+            return;
+        }
+        let directory = tempfile::tempdir().expect("tempdir");
+        let source = directory.path().join("noise.jpg");
+        let output = directory.path().join("optimized.jpg");
+        let mut seed = 0x2545_f491_u32;
+        let pixels = (0..192 * 128)
+            .flat_map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 17;
+                seed ^= seed << 5;
+                let [r, g, b, _] = seed.to_le_bytes();
+                [r, g, b, 255]
+            })
+            .collect();
+        let frame = codecs::RgbaFrame {
+            pixels,
+            width: 192,
+            height: 128,
+        };
+        std::fs::write(&source, codecs::encode_jpeg(&frame, 100, &[]).expect("encode"))
+            .expect("write source");
+
+        let prepared = imageio::prepare(
+            &source,
+            Format::Jpg,
+            &target_candidate_options(Format::Jpg, 100, false),
+            &CancellationToken::new(),
+        )
+        .await
+        .expect("prepare")
+        .expect("JPEG is prepared in process");
+        let sizes = TARGET_QUALITY_CANDIDATES
+            .iter()
+            .map(|&quality| prepared.encode(Some(quality)).expect("encode").len() as u64)
+            .collect::<Vec<_>>();
+        // Every target between two candidates must land on the first
+        // (highest-quality) candidate that fits, as a linear scan would.
+        for expected in 1..sizes.len() {
+            let target = sizes[expected];
+            let linear = sizes.iter().position(|&size| size <= target).expect("fits");
+            let outcome = run_target_optimization(
+                None,
+                "target-search-test",
+                &source,
+                &output,
+                Format::Jpg,
+                false,
+                target,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("reachable target");
+            let OptimizationOutcome::Optimized(result) = outcome else {
+                panic!("target-size work must produce a derivative");
+            };
+            assert_eq!(result.output_size, sizes[linear], "target {target}");
+        }
     }
 
     #[tokio::test]

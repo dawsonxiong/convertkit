@@ -229,11 +229,12 @@ pub async fn convert(
         .map_err(workspace_error)?;
     let source = decodable_source(input, workspace.path(), cancel_token.clone()).await?;
     let encoded = match format {
-        Format::Jpg => {
-            encode_jpeg_output(input, &source, workspace.path(), options, &cancel_token).await?
-        }
-        Format::WebP => {
-            encode_webp_output(input, &source, workspace.path(), options, &cancel_token).await?
+        Format::Jpg | Format::WebP => {
+            let prepared =
+                prepare_source(input, &source, workspace.path(), format, options, &cancel_token)
+                    .await?;
+            let quality = options.quality;
+            blocking(move || prepared.encode(quality)).await?
         }
         Format::Ico => encode_ico_output(&source, workspace.path(), options, &cancel_token).await?,
         _ => {
@@ -321,10 +322,15 @@ pub async fn render_first_frame(
         .tempdir()
         .map_err(workspace_error)?;
     let source = decodable_source(input, workspace.path(), cancel_token.clone()).await?;
-    let frame = workspace.path().join("frame.png");
-    let arguments = ["--rgba8", "--frame", "0"].map(String::from).to_vec();
-    run_convert(&source, &frame, "public.png", arguments, cancel_token).await?;
-    blocking(move || codecs::read_rgba(&frame)).await
+    let mut frames = render_pixels(
+        &source,
+        workspace.path(),
+        &ImageOptions::default(),
+        Some(0),
+        &cancel_token,
+    )
+    .await?;
+    Ok(frames.swap_remove(0))
 }
 
 async fn run_convert(
@@ -355,9 +361,49 @@ async fn run_convert(
     .await
 }
 
+/// Every frame of `source` (or just `frame`) as 8-bit sRGB RGBA with the
+/// requested pixel operations applied, ready for an in-process encoder. The
+/// helper writes raw pixels in one pass; an intermediate PNG per frame cost
+/// most of a second per 12 MP frame to encode and decode again.
+async fn render_pixels(
+    source: &Path,
+    workspace: &Path,
+    options: &ImageOptions,
+    frame: Option<usize>,
+    cancel_token: &CancellationToken,
+) -> Result<Vec<codecs::RgbaFrame>, ConversionError> {
+    let output = workspace.join("frames.pixels");
+    let mut command = tool_command(HELPER);
+    command.arg("pixels").arg(source).arg(&output).args(
+        ImageOptions {
+            quality: None,
+            lzw: false,
+            webp_method: None,
+            ..options.clone()
+        }
+        .helper_arguments(),
+    );
+    if let Some(frame) = frame {
+        command.args(["--frame".to_owned(), frame.to_string()]);
+    }
+    run_process(
+        command,
+        cancel_token.clone(),
+        HELPER_TIMEOUT,
+        &[&output],
+        ProcessMessages {
+            start: "Failed to start the image helper",
+            wait: "The image helper could not be awaited",
+            failure: "Image conversion failed",
+        },
+    )
+    .await?;
+    blocking(move || codecs::read_pixels(&output)).await
+}
+
 /// Render every frame of `source` as a lossless 8-bit RGBA PNG with the
-/// requested pixel operations applied, ready for an in-process encoder.
-async fn render_frames(
+/// requested pixel operations applied, for containers that embed PNG.
+async fn render_png_frames(
     source: &Path,
     workspace: &Path,
     options: &ImageOptions,
@@ -441,70 +487,127 @@ async fn timing(source: &Path, cancel_token: CancellationToken) -> Result<Timing
     })
 }
 
-async fn encode_webp_output(
-    input: &Path,
-    source: &Path,
-    workspace: &Path,
-    options: &ImageOptions,
-    cancel_token: &CancellationToken,
-) -> Result<Vec<u8>, ConversionError> {
-    let paths = render_frames(source, workspace, options, cancel_token).await?;
-    let timing = if paths.len() > 1 {
-        Some(timing(source, cancel_token.clone()).await?)
-    } else {
-        None
-    };
-    let metadata_source = (!options.strip)
-        .then(|| std::fs::read(input).ok())
-        .flatten();
-    let (quality, method) = (options.quality, options.webp_method.unwrap_or(4));
-    blocking(move || {
-        let frames = paths
-            .iter()
-            .map(|path| codecs::read_rgba(path))
-            .collect::<Result<Vec<_>, _>>()?;
-        let encoded = match timing {
-            Some(timing) => {
-                let mut durations = timing.durations_ms;
-                durations.resize(frames.len(), 100);
-                codecs::encode_webp_animation(
-                    &frames,
-                    &durations,
-                    timing.loop_count,
-                    quality,
-                    method,
-                )?
-            }
-            None => codecs::encode_webp(&frames[0], quality, method)?,
-        };
-        Ok(match metadata_source {
-            Some(source) => {
-                codecs::copy_webp_metadata(&encoded, &source, frames[0].width, frames[0].height)
-            }
-            None => encoded,
-        })
-    })
-    .await
+/// A source decoded once for the in-process JPEG and WebP encoders, so
+/// several qualities can be tried without rendering it again.
+pub struct PreparedImage {
+    frames: Vec<codecs::RgbaFrame>,
+    kind: PreparedKind,
 }
 
-async fn encode_jpeg_output(
+enum PreparedKind {
+    Jpeg {
+        segments: Vec<codecs::AppSegment>,
+    },
+    WebP {
+        timing: Option<Timing>,
+        metadata_source: Option<Vec<u8>>,
+        method: u8,
+    },
+}
+
+impl PreparedImage {
+    /// Encode at `quality`; JPEG defaults to 90 and WebP to lossless.
+    pub fn encode(&self, quality: Option<u8>) -> Result<Vec<u8>, ConversionError> {
+        match &self.kind {
+            PreparedKind::Jpeg { segments } => {
+                codecs::encode_jpeg(&self.frames[0], quality.unwrap_or(90), segments)
+            }
+            PreparedKind::WebP {
+                timing,
+                metadata_source,
+                method,
+            } => {
+                let encoded = match timing {
+                    Some(timing) => {
+                        let mut durations = timing.durations_ms.clone();
+                        durations.resize(self.frames.len(), 100);
+                        codecs::encode_webp_animation(
+                            &self.frames,
+                            &durations,
+                            timing.loop_count,
+                            quality,
+                            *method,
+                        )?
+                    }
+                    None => codecs::encode_webp(&self.frames[0], quality, *method)?,
+                };
+                Ok(match metadata_source {
+                    Some(source) => codecs::copy_webp_metadata(
+                        &encoded,
+                        source,
+                        self.frames[0].width,
+                        self.frames[0].height,
+                    ),
+                    None => encoded,
+                })
+            }
+        }
+    }
+}
+
+/// Decode `input` for repeated JPEG or WebP encoding with `options` (its
+/// quality is ignored). Other formats return `None`.
+pub async fn prepare(
+    input: &Path,
+    format: Format,
+    options: &ImageOptions,
+    cancel_token: &CancellationToken,
+) -> Result<Option<PreparedImage>, ConversionError> {
+    if !matches!(format, Format::Jpg | Format::WebP) {
+        return Ok(None);
+    }
+    if resolve_tool(HELPER).is_none() {
+        return Err(missing_helper());
+    }
+    let workspace = tempfile::Builder::new()
+        .prefix("convertkit-image-")
+        .tempdir()
+        .map_err(workspace_error)?;
+    let source = decodable_source(input, workspace.path(), cancel_token.clone()).await?;
+    prepare_source(input, &source, workspace.path(), format, options, cancel_token)
+        .await
+        .map(Some)
+}
+
+async fn prepare_source(
     input: &Path,
     source: &Path,
     workspace: &Path,
+    format: Format,
     options: &ImageOptions,
     cancel_token: &CancellationToken,
-) -> Result<Vec<u8>, ConversionError> {
+) -> Result<PreparedImage, ConversionError> {
+    if format == Format::WebP {
+        let frames = render_pixels(source, workspace, options, None, cancel_token).await?;
+        let timing = if frames.len() > 1 {
+            Some(timing(source, cancel_token.clone()).await?)
+        } else {
+            None
+        };
+        let metadata_source = (!options.strip)
+            .then(|| std::fs::read(input).ok())
+            .flatten();
+        return Ok(PreparedImage {
+            frames,
+            kind: PreparedKind::WebP {
+                timing,
+                metadata_source,
+                method: options.webp_method.unwrap_or(4),
+            },
+        });
+    }
+
     let flattened = ImageOptions {
         flatten: true,
         ..options.clone()
     };
-    let paths = render_frames(source, workspace, &flattened, cancel_token).await?;
-    let [path] = paths.as_slice() else {
+    let frames = render_pixels(source, workspace, &flattened, None, cancel_token).await?;
+    if frames.len() != 1 {
         return Err(ConversionError::UnsupportedConversion {
-            input: format!("This image contains {} frames or pages", paths.len()),
+            input: format!("This image contains {} frames or pages", frames.len()),
             output: "a single JPEG file without discarding frames".into(),
         });
-    };
+    }
     // Kept EXIF already carries the source orientation; stripped output
     // needs a minimal EXIF block so the photo still displays upright.
     let mut segments = if options.strip {
@@ -533,13 +636,10 @@ async fn encode_jpeg_output(
             );
         }
     }
-    let path = path.clone();
-    let quality = options.quality.unwrap_or(90);
-    blocking(move || {
-        let frame = codecs::read_rgba(&path)?;
-        codecs::encode_jpeg(&frame, quality, &segments)
+    Ok(PreparedImage {
+        frames,
+        kind: PreparedKind::Jpeg { segments },
     })
-    .await
 }
 
 async fn encode_ico_output(
@@ -548,7 +648,7 @@ async fn encode_ico_output(
     options: &ImageOptions,
     cancel_token: &CancellationToken,
 ) -> Result<Vec<u8>, ConversionError> {
-    let paths = render_frames(source, workspace, options, cancel_token).await?;
+    let paths = render_png_frames(source, workspace, options, cancel_token).await?;
     let frames = paths
         .iter()
         .map(|path| std::fs::read(path).map_err(|_| ConversionError::OutputMissing))

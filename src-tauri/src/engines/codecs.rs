@@ -3,13 +3,14 @@
 //! Everything here works on decoded RGBA pixels or raw container bytes, so it
 //! is testable without the native helper.
 
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::Path;
 
 use crate::error::ConversionError;
 
 pub const WEBP_MAX_DIMENSION: u32 = 16_383;
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+const PIXELS_MAGIC: &[u8] = b"CKPIXEL1";
 
 /// One decoded frame of 8-bit RGBA pixels.
 pub struct RgbaFrame {
@@ -26,47 +27,46 @@ fn codec_error(message: &str, detail: impl std::fmt::Display) -> ConversionError
     }
 }
 
-pub fn read_rgba(path: &Path) -> Result<RgbaFrame, ConversionError> {
+/// The frames the image helper's `pixels` command wrote: each one is
+/// `CKPIXEL1`, little-endian u32 width and height, then straight RGBA rows.
+pub fn read_pixels(path: &Path) -> Result<Vec<RgbaFrame>, ConversionError> {
     const MESSAGE: &str = "An intermediate image could not be decoded";
     let file = std::fs::File::open(path).map_err(|error| codec_error(MESSAGE, error))?;
-    let mut decoder = png::Decoder::new(BufReader::new(file));
-    decoder.set_transformations(png::Transformations::normalize_to_color8());
-    let mut reader = decoder
-        .read_info()
-        .map_err(|error| codec_error(MESSAGE, error))?;
-    let size = reader
-        .output_buffer_size()
-        .ok_or_else(|| codec_error(MESSAGE, "image is too large"))?;
-    let mut buffer = vec![0; size];
-    let info = reader
-        .next_frame(&mut buffer)
-        .map_err(|error| codec_error(MESSAGE, error))?;
-    buffer.truncate(info.buffer_size());
-    let pixels = match info.color_type {
-        png::ColorType::Rgba => buffer,
-        png::ColorType::Rgb => buffer
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
-            .collect(),
-        png::ColorType::GrayscaleAlpha => buffer
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .flat_map(|pixel| [pixel[0], pixel[0], pixel[0], pixel[1]])
-            .collect(),
-        png::ColorType::Grayscale => buffer
-            .iter()
-            .flat_map(|&value| [value, value, value, 255])
-            .collect(),
-        png::ColorType::Indexed => return Err(codec_error(MESSAGE, "unexpanded palette")),
-    };
-    Ok(RgbaFrame {
-        pixels,
-        width: info.width,
-        height: info.height,
-    })
+    let mut remaining = file
+        .metadata()
+        .map_err(|error| codec_error(MESSAGE, error))?
+        .len();
+    let mut reader = BufReader::new(file);
+    let mut frames = Vec::new();
+    while remaining > 0 {
+        let mut header = [0; 16];
+        reader
+            .read_exact(&mut header)
+            .map_err(|error| codec_error(MESSAGE, error))?;
+        if &header[..8] != PIXELS_MAGIC {
+            return Err(codec_error(MESSAGE, "unexpected frame header"));
+        }
+        let width = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
+        let height = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
+        let length = u64::from(width) * u64::from(height) * 4;
+        remaining = remaining
+            .checked_sub(16 + length)
+            .filter(|_| width > 0 && height > 0)
+            .ok_or_else(|| codec_error(MESSAGE, "truncated frame"))?;
+        let mut pixels = vec![0; length as usize];
+        reader
+            .read_exact(&mut pixels)
+            .map_err(|error| codec_error(MESSAGE, error))?;
+        frames.push(RgbaFrame {
+            pixels,
+            width,
+            height,
+        });
+    }
+    if frames.is_empty() {
+        return Err(codec_error(MESSAGE, "no frames"));
+    }
+    Ok(frames)
 }
 
 pub fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
@@ -982,6 +982,29 @@ mod tests {
             width,
             height,
         }
+    }
+
+    #[test]
+    fn reads_helper_pixel_frames_and_rejects_truncation() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("frames.pixels");
+        let mut data = Vec::new();
+        for (width, height, value) in [(2_u32, 1_u32, 7_u8), (1, 3, 9)] {
+            data.extend_from_slice(PIXELS_MAGIC);
+            data.extend_from_slice(&width.to_le_bytes());
+            data.extend_from_slice(&height.to_le_bytes());
+            data.extend(std::iter::repeat_n(value, (width * height * 4) as usize));
+        }
+        std::fs::write(&path, &data).expect("write frames");
+        let frames = read_pixels(&path).expect("frames");
+        assert_eq!(frames.len(), 2);
+        assert_eq!((frames[0].width, frames[0].height), (2, 1));
+        assert_eq!(frames[1].pixels, vec![9; 12]);
+
+        std::fs::write(&path, &data[..data.len() - 1]).expect("write truncated");
+        assert!(read_pixels(&path).is_err());
+        std::fs::write(&path, b"").expect("write empty");
+        assert!(read_pixels(&path).is_err());
     }
 
     #[test]
