@@ -26,7 +26,7 @@ Results are saved as new files, so your originals stay as they were. You can pin
 
 ## How it works
 
-The React side builds a job and asks Rust over Tauri IPC whether the engines it needs are installed. Rust then runs it through the bundled FFmpeg, ImageIO helper, Pandoc or whisper.cpp and streams progress back as events.
+The React side builds a job and asks Rust over Tauri IPC whether the engines it needs are available. Rust then runs it through an engine bundled in the app (FFmpeg, whisper.cpp, Pandoc and Tectonic, or ConvertKit's own ImageIO, PDFKit and Vision helpers) or in-process Rust code, and streams progress back as events.
 
 If a conversion only changes the container, like MP4 to MOV with the same codecs, ffprobe spots that and the file gets remuxed instead of re-encoded, which is pretty much instant.
 
@@ -43,12 +43,13 @@ The formats in Convert come from `src/lib/formatMatrix.json`, and a backend test
 | Documents | DOCX, HTML, Markdown, EPUB, TXT | Other documents, including PDF | Pandoc and Tectonic (bundled), LibreOffice (optional) |
 | PDF | PDF | Use the PDF tools, not Convert | Bundled PDFKit helper, lopdf (built in) |
 
-Image, video, audio, transcription and PDF tools work without installing anything:
+Every tool works without installing anything:
 
 - A bundled ImageIO helper decodes and resizes images and writes PNG, TIFF, BMP, GIF, AVIF and HEIC.
 - Linked-in libraries write JPEG (mozjpeg), WebP including animation (libwebp) and ICO, render SVG (resvg) and trace rasters to SVG (vtracer).
 - Optimize uses built-in lossless passes: oxipng for PNG, a coefficient transcode for JPEG (what jpegoptim does) and frame differencing for GIF (what gifsicle does).
 - FFmpeg ships inside the app, built from pinned sources with x264, x265, libvpx, opus, lame and vorbis (see License).
+- whisper.cpp is built from its pinned release as one static `whisper-cli` with Metal and Accelerate.
 - A bundled PDFKit helper reads page info, renders pages and extracts text. Split, extract and combine copy pages losslessly with lopdf, and Compress PDF downsamples images to 300, 150 or 72 ppi and re-encodes them with mozjpeg.
 
 ImageMagick is never required. It is only used, if installed, for AVIF or HEIC output on a macOS release whose ImageIO cannot encode them.
@@ -59,11 +60,11 @@ If an engine is missing, you find out before the job starts. There's no PDF to D
 
 ## Stack
 
-Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whisper.cpp.
+Rust, Tauri 2, Tokio, React, TypeScript, Vite, Zustand, Tailwind v4, FFmpeg, whisper.cpp, Pandoc, Tectonic, lopdf, mozjpeg, libwebp, resvg, vtracer.
 
 ## Running locally
 
-You'll need an Apple Silicon Mac, Rust, Node 22 and pnpm, plus these:
+You'll need an Apple Silicon Mac with the Xcode command-line tools, Rust, Node 22 and pnpm, plus these:
 
 ```sh
 brew install pkg-config
@@ -115,6 +116,20 @@ export CONVERTKIT_APPLE_API_PRIVATE_KEY_REF='op://VAULT/ITEM/private key'
 Then `pnpm release:doctor`, `pnpm release:check`, and `pnpm release:macos`.
 
 The upload folder holds `ConvertKit_aarch64.dmg` (the notarized DMG without its version, so the download link above always points at the latest release) and `ConvertKit_<version>_third-party-source.tar.gz`. Attach both to the GitHub release. Publish the source archive with every DMG: it is the GPL Corresponding Source for the bundled FFmpeg (the exact source tarballs and the script that built them) and Pandoc (its source at the shipped tag). `sh scripts/package-third-party-sources.sh` rebuilds it on its own.
+
+### Releasing without notarization
+
+Notarization needs a Developer ID Application certificate and an App Store Connect API key from a paid Apple Developer account. Until those are in 1Password, releases (0.1.0 and 0.2.0 so far) are ad-hoc signed instead, and users approve the app once with Open Anyway:
+
+```sh
+APPLE_SIGNING_IDENTITY=- pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
+mkdir -p src-tauri/target/release/upload/<version>
+cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/ConvertKit_<version>_aarch64.dmg \
+  src-tauri/target/release/upload/<version>/ConvertKit_aarch64.dmg
+sh scripts/package-third-party-sources.sh src-tauri/target/release/upload/<version>
+```
+
+Attach both files in that folder to the GitHub release, and keep the Open Anyway step in its notes.
 
 ## Shortcuts
 
