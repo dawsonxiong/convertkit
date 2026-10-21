@@ -6,10 +6,12 @@ const readSource = (path) => readFile(new URL(`../${path}`, import.meta.url), "u
 
 test("rejected input is announced immediately without additional visible copy", async () => {
   const app = await readSource("src/App.tsx");
+  const toast = await readSource("src/components/RejectionToast.tsx");
 
+  assert.match(app, /<RejectionToast message=\{rejectionMessage\} \/>/);
   assert.match(
-    app,
-    /\{rejectionMessage && \([\s\S]*?role="alert"[\s\S]*?aria-atomic="true"[\s\S]*?\{rejectionMessage\}/,
+    toast,
+    /role=\{shown\.leaving \? undefined : "alert"\}[\s\S]*?aria-atomic="true"[\s\S]*?\{shown\.message\}/,
   );
 });
 

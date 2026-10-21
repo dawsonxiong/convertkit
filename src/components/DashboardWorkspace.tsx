@@ -248,7 +248,7 @@ export function DashboardWorkspace({
             )}
           </header>
 
-          <div className="mt-3 divide-y divide-white/6 border-y border-white/8">
+          <div className="-mx-2 mt-3 divide-y divide-white/6 border-y border-white/8">
             {BUILT_IN_FINDER_ACTIONS.map((action, index) => {
               const installed = finderStatuses[index]?.installed ?? false;
               return (
@@ -269,7 +269,7 @@ export function DashboardWorkspace({
                       ? `${action.label} is in Finder. Click to remove.`
                       : `Add ${action.label} to Finder.`
                   }
-                  className="flex h-9 w-full items-center gap-2.5 text-left text-[11px] text-white/70 hover:bg-white/3 disabled:opacity-40"
+                  className="flex h-9 w-full items-center gap-2.5 px-2 text-left text-[11px] text-white/70 enabled:hover:bg-white/4 enabled:hover:text-white/85 disabled:opacity-40"
                 >
                   <span
                     className={`grid size-4 shrink-0 place-items-center border ${
@@ -305,8 +305,8 @@ export function DashboardWorkspace({
           <h2 id="dashboard-recipes-title" className="text-[13px] font-semibold text-white/80">
             Recipes
           </h2>
-          <p className="mt-1 text-[10px] leading-4 text-white/40">
-            Saved folder, suffix, and tool settings. Create one from Output on a tool.
+          <p className="mt-1 truncate text-[10px] leading-4 text-white/40">
+            Tool settings you saved to reuse on other files.
           </p>
         </header>
 
