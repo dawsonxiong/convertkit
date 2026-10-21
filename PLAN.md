@@ -1,6 +1,6 @@
 # ConvertKit Product and Development Plan
 
-> Living roadmap. Last audited against the codebase on 2026-08-31.
+> Living roadmap. Last audited against the codebase on 2026-10-21.
 
 ## North star
 
@@ -75,8 +75,11 @@ and resumable recent work without duplicating each tool's controls.
 - App-wide keyboard actions use one tested resolver: command shortcuts remain available,
   while unmodified Enter and Escape never start, cancel, or clear work when a form control,
   selector, link, or button owns keyboard focus.
-- ImageMagick, FFmpeg, Pandoc, LibreOffice, resvg, VTracer, Poppler, Ghostscript, and
-  bundled macOS Vision OCR routing with exact per-job capability checks.
+- Every runtime engine ships inside the app: bundled ImageIO, PDFKit, image-to-PDF and
+  Vision OCR helpers; FFmpeg and whisper.cpp built from pinned sources; the official Pandoc
+  and Tectonic binaries; and in-process mozjpeg, libwebp, oxipng, resvg, vtracer and lopdf.
+  ImageMagick and LibreOffice are optional fallbacks. Routing keeps exact per-job capability
+  checks.
 - Image, video, audio, document, and SVG format detection with common extension
   aliases.
 - Multi-file and recursive folder input through browsing or drag-and-drop for every
@@ -155,15 +158,21 @@ and resumable recent work without duplicating each tool's controls.
   wins the path after preparation, and return the path actually committed. Source and hard-link
   aliases are rejected before commit, while multi-output rollback removes only paths owned by
   the current transaction.
-- Availability-aware engine routing that falls back to another compatible installed
-  engine and checks secondary requirements such as Tectonic for Pandoc PDF output.
+- Availability-aware engine routing that falls back to another compatible available
+  engine (DOCX to PDF goes through Pandoc and Tectonic when LibreOffice is missing) and
+  checks secondary requirements such as Tectonic for Pandoc PDF output. Pandoc receives
+  Tectonic's resolved path, so PDF output works under Finder's minimal launch `PATH`.
 - One frontend conversion matrix imported by the format picker and verified in Rust
   against every advertised target, typed compatibility row, and backend engine route.
-- ImageMagick conversion inspects source and candidate topology. Static outputs must match the
+- Raster conversion inspects source and candidate topology. Static outputs must match the
   requested logical format and source geometry; multi-frame inputs are preserved only in a
-  verified single-file-capable target, while incompatible targets are rejected before execution.
-  Conversion runs inside a same-parent hidden workspace so numbered ImageMagick sidecars cannot
-  leak beside user files.
+  verified single-file-capable target, and animations whose frames differ in size are rejected
+  for GIF and WebP before execution. The bundled ImageIO helper decodes and resizes; JPEG
+  (mozjpeg, 4:2:0), WebP including animation (libwebp) and ICO are encoded in process, and
+  ICO directories are parsed in Rust because ImageIO misreads some icons. ImageMagick renders
+  only formats a macOS release cannot encode, and its output is verified with its own frame
+  model. Conversion runs inside a same-parent hidden workspace so partial files cannot leak
+  beside user files.
 - A packaged debug app launched with only `/usr/bin:/bin` on `PATH` completed one
   mixed Convert queue covering MP4 to MOV, SVG to JPEG, Markdown to PDF, PNG to JPEG,
   and WAV to MP3. Independent inspection verified the expected media streams and
@@ -197,8 +206,8 @@ and resumable recent work without duplicating each tool's controls.
 - Cancellation tokens, timeouts, partial-output cleanup, and structured errors.
 - One bounded subprocess runner now owns quiet-process cancellation, timeouts, complete
   stderr draining with a retained 64 KiB tail, exit-code errors, and partial-output cleanup
-  for ImageMagick conversion/resize/optimization/export, resvg, VTracer, Pandoc,
-  and LibreOffice.
+  for the bundled image, PDF and OCR helpers, Pandoc, Tectonic, LibreOffice and the
+  optional ImageMagick fallback.
 - Progress-aware FFmpeg video/audio jobs and PDF/text runners reuse the same bounded pipe
   capture, mark children for termination if their owning future is dropped, join pipe
   readers on every exit path, and retain their specialized progress and verification.
@@ -206,7 +215,10 @@ and resumable recent work without duplicating each tool's controls.
   zero-byte results before any temporary output can be committed. Exact signature, codec,
   stream, dimensions, cue, topology, and format checks remain layered on top where the
   operation requires stronger proof.
-- Dependency detection that also searches common Homebrew and Cargo locations.
+- Tool resolution prefers executables inside the app bundle, then `PATH` and common
+  Homebrew locations for the optional engines. The Poppler command names `pdfinfo`,
+  `pdftoppm` and `pdftotext` resolve to the bundled PDF helper, which accepts the same
+  arguments and prints the same output.
 - Drag-and-drop, filtered file browsing, image paste, and batch Finder Open With. Launch-time
   paths are buffered until the frontend listener is ready, routed as one set to the current
   or best matching utility, bounded and deduplicated, and deferred during an active job.
@@ -257,8 +269,10 @@ and resumable recent work without duplicating each tool's controls.
   A packaged minimal-`PATH` proof held JPEG and WebP below 256 KiB with unchanged format,
   dimensions, frame count, and source hashes, exercised numbered keep-both output, and proved
   typed unreachable-target and cancellation cleanup without committed or hidden partial output.
-- Optional OxiPNG, jpegoptim, and Gifsicle candidates for lossless format-specific
-  optimization, with ImageMagick retained as the always-available fallback.
+- Built-in lossless candidates for format-specific optimization: oxipng for PNG, a DCT
+  coefficient transcode for JPEG (what jpegoptim does, keeping EXIF orientation when
+  metadata is stripped), and frame differencing for animated GIF (what gifsicle does), which
+  re-decodes its output and compares every composited frame before it can be used.
 - Explicit batch image export recipes that combine proportional downscaling, format
   conversion, compression, and metadata removal without editor controls. Web, Email,
   Social, and Preview variants can be selected together; each source produces a
@@ -315,8 +329,8 @@ and resumable recent work without duplicating each tool's controls.
   IDs, and incremental-history remnants; rejects encrypted or digitally signed inputs; and
   verifies unchanged page geometry and every reachable non-metadata object before commit.
 - Focused batch text extraction from PDF, DOCX, HTML, Markdown, and EPUB into UTF-8
-  plain-text copies. It routes PDFs through Poppler and documents through Pandoc, with
-  exact dependency preflight, recursive folder input, relative output folders, retained
+  plain-text copies. It routes PDFs through the bundled PDF helper and documents through
+  the bundled Pandoc, with exact dependency preflight, recursive folder input, relative output folders, retained
   tab state, cancellation, source preservation, recent history, and Finder reveal.
 - Local batch OCR for common raster images and scanned PDFs through a bundled macOS Vision
   helper, with retained Text file and Searchable PDF output modes. Searchable output preserves
@@ -328,7 +342,7 @@ and resumable recent work without duplicating each tool's controls.
   default, image and multipage searchable PDFs, extractable text order, pixel-identical scan
   rendering, keep-both naming, and unchanged source hashes; cancelling a 120-page job left no
   output, hidden partial, workspace, renderer, or OCR helper process.
-- Ordered Combine to PDF through Poppler with mixed PDF, PNG, and JPEG multi-file/folder input,
+- Ordered Combine to PDF with lossless lopdf page copying and mixed PDF, PNG, and JPEG multi-file/folder input,
   duplicate prevention, retained tab state, exact dependency preflight, cancellation, timeout,
   safe naming, recent-job history, and Reveal in Finder. PNG and JPEG inputs use the bundled
   image-to-PDF helper in an isolated temporary workspace; existing PDF inputs retain all pages.
@@ -338,25 +352,29 @@ and resumable recent work without duplicating each tool's controls.
   private image comments, numbered keep-both output, and no hidden partial files. The existing
   native smoke also combines representative 1-page and 67-page PDF inputs into one verified
   68-page PDF.
-- Batched PDF splitting through Poppler, with one-file-per-page output or ordered page
+- Batched PDF splitting with lossless lopdf page copying (inherited page attributes are
+  written onto each page, and links to pages left behind are cut), with one-file-per-page output or ordered page
   selection syntax such as `1-3, 5, 8-10`. It has retained settings, exact dependency
   checks, cancellation, atomic output commits, recent history, and Finder reveal.
-- Batched PDF page export through Poppler, with every-page or ordered page selection,
+- Batched PDF page export through the bundled PDFKit helper, with every-page or ordered page selection,
   PNG and JPEG output, and focused 144 DPI Screen or 300 DPI Print resolution presets.
   Each PDF produces a deterministic, rollback-safe output set with retained settings,
   exact dependency checks, progress, cancellation, recent history, and Finder reveal.
-- Batched PDF compression through Ghostscript with mutually exclusive Quality and File size
-  goals. Quality retains High, Balanced, and Smallest presets and preserves the source bytes
+- Batched in-process PDF compression with mutually exclusive Quality and File size goals.
+  Each image's drawn resolution is measured from the page content streams; images above the
+  preset (300, 150 or 72 ppi, as in Ghostscript's presets) are downsampled and re-encoded with
+  mozjpeg, and the file is rewritten with object streams. Text, vectors and fonts are copied
+  unchanged, so text-heavy PDFs shrink less than they did under Ghostscript.
+  Quality retains High, Balanced, and Smallest presets and preserves the source bytes
   if recompression would grow the PDF. File size accepts a whole-MiB target from 1 MiB through
   100 GiB, requires it to be below every queued source, and runs a deterministic ten-step
   resolution/quality search. Both goals require a readable candidate whose page count, rotation,
   and effective Media/Crop/Bleed/Trim/Art boxes match the source; File size also requires the
   candidate to remain below the exact ceiling. The selected
   goal survives tool switches and restarts and participates in saved recipes. A minimal-`PATH`
-  packaged smoke reduced a 5,780,211-byte, 13-page mixed raster/vector
-  PDF to 760,081 bytes under a 1 MiB ceiling, verified every page box, produced a numbered
-  keep-both copy, preserved source hashes, and proved cancellation and unreachable targets
-  leave no output, hidden partial, or Ghostscript child.
+  packaged smoke holds a 13-page mixed raster/vector PDF under a 1 MiB ceiling, verifies every
+  page box, produces a numbered keep-both copy, preserves source hashes, and proves
+  cancellation and unreachable targets leave no output or hidden partial.
 - Built-in ZIP, 7Z, TAR, TAR.GZ, and single-file GZIP creation plus ZIP, 7Z, TAR, TAR.GZ, TGZ, and
   standalone GZIP extraction with multi-file/folder input, preserved relative paths, a retained format choice,
   batch extraction,
@@ -463,9 +481,14 @@ managed by retired recipes before committing sanitized state.
   resume from its previous byte or frame. Interrupted rows restart as new jobs. Completed,
   partial, failed, skipped, and cancelled outcomes remain in Recent Jobs, but interrupted
   work restarts from the beginning rather than resuming at a previous byte or frame.
-- A debug macOS app bundle builds cleanly; interactive release smoke testing remains.
-- The signed/notarized release path is scripted but still needs a real credentialed run
-  and clean-machine Gatekeeper check. Secure update delivery is intentionally not enabled
+- 0.2.0 is published as an ad-hoc signed, unnotarized DMG with its GPL source archive, so
+  users approve it once with Open Anyway. The notarized path is scripted but needs a
+  Developer ID Application certificate and an App Store Connect API key, then a real
+  credentialed run and clean-machine Gatekeeper check.
+- Tectonic downloads TeX support files the first time it builds a PDF, so the first
+  document-to-PDF conversion needs a network connection.
+- The bundled Pandoc (183 MB) and Tectonic (52 MB) dominate the app's size; the DMG is
+  about 87 MB. Secure update delivery is intentionally not enabled
   until a dedicated Tauri updater keypair exists: the public key must be compiled into the
   app and the private key retained through 1Password-backed release tooling before signed
   updater artifacts and GitHub `latest.json` can be published.
@@ -640,9 +663,10 @@ Ship narrow, dependable tools rather than a miniature document editor.
 - [x] Add a mutually exclusive exact file-size goal to Compress PDF with bounded attempts,
       page-topology verification, a clear unreachable-target error, and no committed or hidden
       partial output on failure or cancellation.
-- [x] Convert supported documents through Pandoc and LibreOffice.
+- [x] Convert supported documents through the bundled Pandoc and Tectonic, with LibreOffice
+      as the optional layout-faithful DOCX-to-PDF engine.
 - [x] Extract readable text from PDF, DOCX, HTML, Markdown, and EPUB in retained batch
-      queues with exact Poppler/Pandoc preflight and source-preserving outputs.
+      queues with exact PDF-helper/Pandoc preflight and source-preserving outputs.
 - [x] Inspect and export document metadata through the shared Inspect Files workflow.
 - [x] Recognize text in common raster images and scanned PDFs through bundled macOS Vision,
       with automatic language detection where supported and no downloadable model or API.
@@ -862,11 +886,18 @@ output inside Universal Convert, and the existing PDF merge workflow has become 
 for an ordered PDF, PNG, and JPEG mix. Together they cover both one-output-per-image and one
 combined-document workflows without adding editor controls.
 
-Apple Silicon transcription no longer depends on a system `whisper-cli`. The native-helper
-build stages pinned versions, rejects architecture drift without deleting the last valid
-runtime, bundles license notices, removes compiled Homebrew backend paths, and verifies every
-remaining Mach-O dependency. The packaged request boundary and a clean-environment dyld audit
-both resolve the runtime entirely inside `ConvertKit.app`.
+Apple Silicon transcription no longer depends on a system `whisper-cli`.
+`scripts/build-whisper.sh` builds the pinned whisper.cpp release as one static arm64 binary
+with its CPU, Metal and Accelerate backends built in, links only macOS libraries, ships the
+upstream licence and a NOTICE, and the package gate verifies it inside `ConvertKit.app`.
+
+As of 0.2.0 no tool needs Homebrew. Images, PDFs, video, audio, transcription and document
+conversion run on engines bundled in the app or in process, and the packaged app passes the
+same jobs with Homebrew's ImageMagick, FFmpeg, Poppler, Ghostscript, Pandoc, Tectonic,
+LibreOffice and optimizers hidden. FFmpeg (with x264 and x265) and Pandoc are
+GPL-2.0-or-later, so every release must attach `ConvertKit_<version>_third-party-source.tar.gz`.
+A macOS CI job builds every helper and pinned engine (cached) and runs clippy and the Rust
+tests.
 
 For video, keep the product narrower than HandBrake: clear presets for dimensions,
 codec, and file-size/quality reduction, followed by focused audio-stream and delivery
