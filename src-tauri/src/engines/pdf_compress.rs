@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use lopdf::content::Content;
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
+use rayon::prelude::*;
 use tokio_util::sync::CancellationToken;
 
 use crate::engines::codecs::{encode_jpeg, RgbaFrame};
@@ -71,12 +72,24 @@ pub fn compress(
     settings: Settings,
     cancel_token: &CancellationToken,
 ) -> Result<(), ConversionError> {
-    let placements = image_placements(document);
-    for (image_id, scale) in placements {
-        if cancel_token.is_cancelled() {
-            return Err(ConversionError::Cancelled);
-        }
-        recompress_image(document, image_id, scale, settings);
+    // Decoding, resampling and encoding only read the document, so every
+    // image is planned in parallel and the replacements are applied after.
+    let placements = image_placements(document).into_iter().collect::<Vec<_>>();
+    let shared: &Document = document;
+    let replacements = placements
+        .par_iter()
+        .map(|&(image_id, scale)| {
+            if cancel_token.is_cancelled() {
+                return Vec::new();
+            }
+            recompress_image(shared, image_id, scale, settings)
+        })
+        .collect::<Vec<_>>();
+    if cancel_token.is_cancelled() {
+        return Err(ConversionError::Cancelled);
+    }
+    for (id, stream) in replacements.into_iter().flatten() {
+        document.objects.insert(id, Object::Stream(stream));
     }
     document.prune_objects();
     document.delete_zero_length_streams();
@@ -280,14 +293,20 @@ enum Channels {
     Rgb,
 }
 
-/// Replace one image with a downsampled JPEG when that is smaller. Images
-/// this cannot decode exactly are left untouched.
-fn recompress_image(document: &mut Document, id: ObjectId, pixels_per_point: f32, settings: Settings) {
+/// The streams that replace one image with a downsampled JPEG when that is
+/// smaller, followed by its resampled soft mask. Images this cannot decode
+/// exactly yield nothing and are left untouched.
+fn recompress_image(
+    document: &Document,
+    id: ObjectId,
+    pixels_per_point: f32,
+    settings: Settings,
+) -> Vec<(ObjectId, Stream)> {
     let Ok(Object::Stream(stream)) = document.get_object(id) else {
-        return;
+        return Vec::new();
     };
     let Some(decoded) = decode_image(document, stream) else {
-        return;
+        return Vec::new();
     };
     let (channels, width, height, samples) = decoded;
     let ppi = pixels_per_point * 72.0;
@@ -317,7 +336,7 @@ fn recompress_image(document: &mut Document, id: ObjectId, pixels_per_point: f32
         }
     };
     let Some(jpeg) = jpeg.filter(|jpeg| jpeg.len() < stream.content.len()) else {
-        return;
+        return Vec::new();
     };
 
     let mut dictionary = stream.dict.clone();
@@ -329,13 +348,14 @@ fn recompress_image(document: &mut Document, id: ObjectId, pixels_per_point: f32
     let soft_mask = dictionary.get(b"SMask").and_then(Object::as_reference).ok();
     let mut replacement = Stream::new(dictionary, jpeg);
     replacement.allows_compression = false;
-    document.objects.insert(id, Object::Stream(replacement));
+    let mut replacements = vec![(id, replacement)];
 
     // A soft mask has its own dimensions; resample it by the same factor and
     // keep it lossless.
     if let Some(mask_id) = soft_mask.filter(|_| factor < 1.0) {
-        resample_mask(document, mask_id, factor);
+        replacements.extend(resample_mask(document, mask_id, factor).map(|mask| (mask_id, mask)));
     }
+    replacements
 }
 
 fn channel_count(channels: &Channels) -> usize {
@@ -446,32 +466,32 @@ fn decode_jpeg(data: &[u8], channels: &Channels) -> Option<Vec<u8>> {
         .ok()
 }
 
-fn resample_mask(document: &mut Document, mask_id: ObjectId, factor: f32) {
+fn resample_mask(document: &Document, mask_id: ObjectId, factor: f32) -> Option<Stream> {
     let Ok(Object::Stream(mask)) = document.get_object(mask_id) else {
-        return;
+        return None;
     };
     let dictionary = &mask.dict;
     let (Ok(width), Ok(height)) = (
         dictionary.get(b"Width").and_then(Object::as_i64),
         dictionary.get(b"Height").and_then(Object::as_i64),
     ) else {
-        return;
+        return None;
     };
     let (width, height) = (width as usize, height as usize);
     if dictionary.get(b"BitsPerComponent").and_then(Object::as_i64).ok() != Some(8)
         || dictionary.has(b"Decode")
     {
-        return;
+        return None;
     }
     let Ok(samples) = (if dictionary.has(b"Filter") {
         mask.decompressed_content()
     } else {
         Ok(mask.content.clone())
     }) else {
-        return;
+        return None;
     };
     if samples.len() != width * height {
-        return;
+        return None;
     }
     let new_width = ((width as f32 * factor).round() as usize).max(1);
     let new_height = ((height as f32 * factor).round() as usize).max(1);
@@ -483,7 +503,7 @@ fn resample_mask(document: &mut Document, mask_id: ObjectId, factor: f32) {
     dictionary.set("Height", Object::Integer(new_height as i64));
     let mut replacement = Stream::new(dictionary, resampled);
     let _ = replacement.compress();
-    document.objects.insert(mask_id, Object::Stream(replacement));
+    Some(replacement)
 }
 
 /// Area-average downsampling: each output sample is the mean of the source

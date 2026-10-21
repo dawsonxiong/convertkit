@@ -633,6 +633,7 @@ dependencies = [
  "oxipng",
  "plist",
  "png 0.18.1",
+ "rayon",
  "reqwest 0.12.28",
  "resvg",
  "serde",

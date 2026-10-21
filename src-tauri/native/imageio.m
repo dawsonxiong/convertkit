@@ -584,6 +584,106 @@ static int runConvert(NSString *inputPath, NSString *outputPath, NSString *outpu
   return 0;
 }
 
+// Uncompressed 8-bit sRGB RGBA (straight alpha) for the in-process encoders.
+// Each frame is "CKPIXEL1", little-endian u32 width and height, then the
+// rows. Encoding a 12 MP intermediate PNG instead costs most of a second.
+static BOOL appendPixels(NSFileHandle *output, CGImageRef image) {
+  size_t width = CGImageGetWidth(image);
+  size_t height = CGImageGetHeight(image);
+  size_t stride = CGImageGetBytesPerRow(image);
+  CGImageAlphaInfo alpha = CGImageGetAlphaInfo(image);
+  if (CGImageGetBitsPerPixel(image) != 32 || CGImageGetBitsPerComponent(image) != 8 ||
+      (alpha != kCGImageAlphaPremultipliedLast && alpha != kCGImageAlphaNoneSkipLast)) {
+    return NO;
+  }
+  CFDataRef data = CGDataProviderCopyData(CGImageGetDataProvider(image));
+  if (data == NULL || (size_t)CFDataGetLength(data) < stride * (height - 1) + width * 4) {
+    if (data != NULL) {
+      CFRelease(data);
+    }
+    return NO;
+  }
+  const uint8_t *bytes = CFDataGetBytePtr(data);
+  uint32_t header[2] = {CFSwapInt32HostToLittle((uint32_t)width),
+                        CFSwapInt32HostToLittle((uint32_t)height)};
+  NSMutableData *frame = [NSMutableData dataWithCapacity:16 + width * height * 4];
+  [frame appendBytes:"CKPIXEL1" length:8];
+  [frame appendBytes:header length:sizeof header];
+  NSMutableData *row = [NSMutableData dataWithLength:width * 4];
+  uint8_t *pixels = row.mutableBytes;
+  for (size_t y = 0; y < height; y++) {
+    memcpy(pixels, bytes + y * stride, width * 4);
+    for (size_t x = 0; x < width * 4; x += 4) {
+      uint8_t a = pixels[x + 3];
+      if (alpha == kCGImageAlphaNoneSkipLast) {
+        pixels[x + 3] = 255;
+      } else if (a != 0 && a != 255) {
+        for (size_t c = 0; c < 3; c++) {
+          unsigned value = (pixels[x + c] * 255u + a / 2) / a;
+          pixels[x + c] = value > 255 ? 255 : (uint8_t)value;
+        }
+      }
+    }
+    [frame appendData:row];
+  }
+  CFRelease(data);
+  @try {
+    [output writeData:frame];
+  } @catch (NSException *exception) {
+    return NO;
+  }
+  return YES;
+}
+
+static int runPixels(NSString *inputPath, NSString *outputPath, ConvertOptions *options) {
+  if (outputPath == nil || [inputPath isEqualToString:outputPath]) {
+    return fail(@"Choose a different output path.", 4);
+  }
+  int status = 0;
+  CGImageSourceRef source = openSource(inputPath, &status);
+  if (source == NULL) {
+    return status;
+  }
+  size_t sourceCount = CGImageSourceGetCount(source);
+  if (options->hasFrame && options->frame >= sourceCount) {
+    CFRelease(source);
+    return fail(@"Frame index is out of range.", 9);
+  }
+  size_t first = options->hasFrame ? options->frame : 0;
+  size_t count = options->hasFrame ? 1 : sourceCount;
+  options->rgba8 = YES;
+
+  NSURL *outputURL = [NSURL fileURLWithPath:outputPath isDirectory:NO];
+  [[NSFileManager defaultManager] removeItemAtURL:outputURL error:nil];
+  if (![[NSFileManager defaultManager] createFileAtPath:outputPath contents:nil attributes:nil]) {
+    CFRelease(source);
+    return fail(@"The output image could not be created.", 10);
+  }
+  NSFileHandle *output = [NSFileHandle fileHandleForWritingAtPath:outputPath];
+  for (size_t index = first; index < first + count; index++) {
+    @autoreleasepool {
+      CGImageRef decoded = decodeFrame(source, index, options->orient);
+      CGImageRef pixels = decoded == NULL ? NULL : redraw(decoded, options, options->flatten);
+      if (decoded != NULL) {
+        CGImageRelease(decoded);
+      }
+      BOOL written = pixels != NULL && appendPixels(output, pixels);
+      if (pixels != NULL) {
+        CGImageRelease(pixels);
+      }
+      if (!written) {
+        [output closeFile];
+        CFRelease(source);
+        [[NSFileManager defaultManager] removeItemAtURL:outputURL error:nil];
+        return fail(@"This image cannot be rendered by macOS.", 11);
+      }
+    }
+  }
+  [output closeFile];
+  CFRelease(source);
+  return 0;
+}
+
 static int runThumbnail(NSString *inputPath, NSString *outputPath, const char *edge) {
   size_t maxEdge = 0;
   if (!parseUnsigned(edge, &maxEdge)) {
@@ -632,6 +732,7 @@ static int usage(void) {
               @"  convertkit-imageio assemble <output> <type-identifier> <image>...\n"
               @"  convertkit-imageio thumbnail <image> <output.png> <max-edge>\n"
               @"  convertkit-imageio convert <image> <output> <type-identifier> [options]\n"
+              @"  convertkit-imageio pixels <image> <output> [options]\n"
               @"    --quality N  --fit W H  --exact W H  --shrink W H  --strip  --orient\n"
               @"    --srgb  --flatten  --lzw  --single  --rgba8  --frame N",
               2);
@@ -670,6 +771,14 @@ int main(int argc, const char *argv[]) {
       }
       NSString *outputType = [NSString stringWithUTF8String:argv[4]];
       return runConvert(pathArgument(argv[2]), pathArgument(argv[3]), outputType, &options);
+    }
+    if (strcmp(command, "pixels") == 0 && argc >= 4) {
+      ConvertOptions options = {0};
+      int status = parseOptions(argc, argv, 4, &options);
+      if (status != 0) {
+        return status;
+      }
+      return runPixels(pathArgument(argv[2]), pathArgument(argv[3]), &options);
     }
     return usage();
   }

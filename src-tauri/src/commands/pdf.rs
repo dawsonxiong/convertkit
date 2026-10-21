@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
+use futures_util::StreamExt;
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
@@ -20,6 +21,8 @@ use super::output::{prepare_output, OutputOptions};
 const MAX_MERGE_INPUTS: usize = 100;
 const MAX_SPLIT_PAGES: u32 = 5_000;
 const MAX_PAGE_IMAGE_EXPORTS: u32 = 1_000;
+/// Each render holds one decoded page, so this also bounds memory.
+const MAX_CONCURRENT_PAGE_RENDERS: usize = 8;
 const MERGE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const SPLIT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const COMPRESSION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -333,31 +336,47 @@ pub async fn export_pdf_pages(
     let page_width = page_count.to_string().len().max(3);
     let mut prepared = Vec::with_capacity(pages.len());
 
-    for (index, page) in pages.iter().copied().enumerate() {
-        if cancel_token.is_cancelled() {
-            return Err(ConversionError::Cancelled);
-        }
+    // Each page renders in its own helper process, so several run at once.
+    // `buffered` keeps the results in page order.
+    let concurrency = std::thread::available_parallelism()
+        .map_or(4, usize::from)
+        .clamp(1, MAX_CONCURRENT_PAGE_RENDERS);
+    let mut rendered_pages = futures_util::stream::iter(pages.iter().copied().enumerate())
+        .map(|(index, page)| {
+            let prefix = temp.path().join(format!("page-{index}"));
+            let arguments = page_image_arguments(&input, &prefix, page, output_format, resolution);
+            let cancel_token = cancel_token.clone();
+            async move {
+                if cancel_token.is_cancelled() {
+                    return Err(ConversionError::Cancelled);
+                }
+                run_pdf_tool(
+                    "pdftoppm",
+                    &arguments,
+                    "PDF page export",
+                    cancel_token,
+                    SPLIT_TIMEOUT,
+                )
+                .await?;
+                let rendered = prefix.with_extension(output_format.extension());
+                verify_page_image(&rendered, output_format)?;
+                Ok((page, rendered))
+            }
+        })
+        .buffered(concurrency);
+
+    let mut completed = 0;
+    while let Some(rendered_page) = rendered_pages.next().await {
+        let (page, rendered) = rendered_page?;
+        completed += 1;
         let _ = app.emit(
             "conversion-progress",
             ProgressPayload {
                 job_id: event_job_id.clone(),
-                percent: ((index * 100) / pages.len()) as i32,
-                stage: format!("Exporting page {page}"),
+                percent: ((completed * 100) / pages.len()) as i32,
+                stage: format!("Exported page {page}"),
             },
         );
-
-        let prefix = temp.path().join(format!("page-{index}"));
-        let arguments = page_image_arguments(&input, &prefix, page, output_format, resolution);
-        run_pdf_tool(
-            "pdftoppm",
-            &arguments,
-            "PDF page export",
-            cancel_token.clone(),
-            SPLIT_TIMEOUT,
-        )
-        .await?;
-        let rendered = prefix.with_extension(output_format.extension());
-        verify_page_image(&rendered, output_format)?;
 
         let mut page_options = base_options.clone();
         page_options.suffix = format!("{}-{page:0page_width$}", base_options.suffix);
@@ -371,6 +390,7 @@ pub async fn export_pdf_pages(
         })?;
         prepared.push(output);
     }
+    drop(rendered_pages);
 
     let mut result = commit_split_outputs(prepared)?;
     result.duration_ms = started.elapsed().as_millis() as u64;
