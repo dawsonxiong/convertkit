@@ -119,7 +119,7 @@ The upload folder holds `ConvertKit_aarch64.dmg` (the notarized DMG without its 
 
 ### Releasing without notarization
 
-Notarization needs a Developer ID Application certificate and an App Store Connect API key from a paid Apple Developer account. Until those are in 1Password, releases (0.1.0 and 0.2.0 so far) are ad-hoc signed instead, and users approve the app once with Open Anyway:
+Notarization needs a Developer ID Application certificate and an App Store Connect API key from a paid Apple Developer account. Until those are in 1Password, releases (0.1.0 through 0.2.1 so far) are ad-hoc signed instead, and users approve the app once with Open Anyway:
 
 ```sh
 APPLE_SIGNING_IDENTITY=- pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
