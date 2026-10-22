@@ -137,7 +137,27 @@ export function ResizePanel() {
           </div>
         </label>
 
-        <span className="pb-2.5 text-[10px] text-white/30">×</span>
+        {preserveAspect ? (
+          <span className="flex h-9 items-center text-[#b0c6ff]" title="Width and height are linked">
+            <svg
+              className="size-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              role="img"
+              aria-label="Linked"
+            >
+              <path
+                d="M10 13.5a4 4 0 005.66 0l3-3a4 4 0 00-5.66-5.66l-1.5 1.5M14 10.5a4 4 0 00-5.66 0l-3 3a4 4 0 005.66 5.66l1.5-1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        ) : (
+          <span className="pb-2.5 text-[10px] text-white/30">×</span>
+        )}
 
         <label className="flex flex-col gap-1.5 text-[10px] font-medium text-white/50">
           Height

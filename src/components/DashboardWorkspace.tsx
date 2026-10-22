@@ -173,7 +173,7 @@ export function DashboardWorkspace({
   };
 
   return (
-    <section className="queue-scroll h-full min-h-0 overflow-y-auto pr-1">
+    <section className="queue-scroll h-full min-h-0 overflow-y-auto pr-3">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-[#e5e1e4]">Dashboard</h1>
       </header>
